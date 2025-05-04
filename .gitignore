@@ -1,62 +1,39 @@
-# Xcode
-#
-# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
-
-## User settings
+# Ignore Swift Package Manager build artifacts directory.
+.build/
+.*-build/
+# Ignore generated Xcode projects
+*.xcodeproj
+# Ignore SwiftPM state, such as the generated xcodeproj when opening the project directly
+.swiftpm
+# Ignore user state in Xcode Projects
+*.xcuserdatad
+UserInterfaceState.xcuserstate
 xcuserdata/
 
-## Obj-C/Swift specific
-*.hmap
+# Ignore VScode workspace settings and launch configurations
+.vscode
 
-## App packaging
-*.ipa
-*.dSYM.zip
-*.dSYM
+# Ignore bazel symlinks
+/bazel-*
 
-## Playgrounds
-timeline.xctimeline
-playground.xcworkspace
+# Ignore cmake build configuration and output
+build/
 
-# Swift Package Manager
-#
-# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
-# Packages/
-# Package.pins
-# Package.resolved
-# *.xcodeproj
-#
-# Xcode automatically generates this directory with a .xcworkspacedata file and xcuserdata
-# hence it is not needed unless you have added a package configuration file to your project
-# .swiftpm
+# We always build swiftSyntax of trunk dependencies. Ignore any fixed
+# dependency versions.
+Package.resolved
 
-.build/
+.DS_Store
+*.pyc
 
-# CocoaPods
-#
-# We recommend against adding the Pods directory to your .gitignore. However
-# you should judge for yourself, the pros and cons are mentioned at:
-# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
-#
-# Pods/
-#
-# Add this line if you want to avoid checking in source code from the Xcode workspace
-# *.xcworkspace
+Tests/PerformanceTest/baselines.json
 
-# Carthage
-#
-# Add this line if you want to avoid checking in source code from Carthage dependencies.
-# Carthage/Checkouts
+# The local build of swift-format to format swift-syntax
+.swift-format-build
 
-Carthage/Build/
-
-# fastlane
-#
-# It is recommended to not store the screenshots in the git repo.
-# Instead, use fastlane to re-generate the screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/#source-control
-
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output
+/.build
+/Packages
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
