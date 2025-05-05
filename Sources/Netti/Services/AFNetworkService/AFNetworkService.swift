@@ -31,7 +31,7 @@ import Foundation
 /// ```
 ///
 /// This class is thread-safe and designed for modern Swift concurrency with `async/await`.
-public final class AFNetworkService: NetworkService {
+public final class AFNetworkService: NetworkService, @unchecked Sendable {
     // MARK: - Properties
 
     /// The Alamofire session used to execute HTTP requests.

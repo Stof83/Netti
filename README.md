@@ -8,7 +8,7 @@
 [![Swift](https://img.shields.io/badge/Swift-6.1-orange?style=flat-square)](https://img.shields.io/badge/Swift-5.9_5.10_6.0-Orange?style=flat-square)
 [![Platforms](https://img.shields.io/badge/Platforms-macOS_iOS_tvOS_watchOS_visionOS-green?style=flat-square)](https://img.shields.io/badge/Platforms-macOS_iOS_tvOS_watchOS_vision_OS_Linux_Windows_Android-Green?style=flat-square)
 [![Swift Package Manager](https://img.shields.io/badge/Swift_Package_Manager-compatible-orange?style=flat-square)](https://img.shields.io/badge/Swift_Package_Manager-compatible-orange?style=flat-square)
-
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Stof83/Netti/blob/main/LICENSE)
 
 Netti is a modular, type-safe Swift networking library built on top of Alamofire. It aims to streamline network operations with a consistent and protocol-oriented approach, utilizing modern Swift features like async/await and Swift concurrency.
 
@@ -175,7 +175,7 @@ Alamofire-based implementation of `NetworkService`. Handles:
 
 ## License
 
-This SDK is provided under the MIT License. [See LICENSE](https://github.com/Stof83/netti/LICENSE) for details.
+This SDK is provided under the MIT License. [See LICENSE](https://github.com/Stof83/Netti/blob/main/LICENSE) for details.
 Feel free to use, modify, and distribute it as per the terms of the license.
 
 
