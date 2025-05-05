@@ -16,9 +16,6 @@ import Foundation
 /// Implementers of this protocol should provide network functionality using appropriate HTTP methods
 /// and encoding strategies.
 public protocol NetworkService: AnyObject {
-    /// The expected decoded response type.
-    associatedtype Response: Decodable & Sendable
-
     /// Sends a network request with optional parameters and returns the raw response data.
     ///
     /// This method is used to perform standard HTTP requests with optional parameters (e.g., query parameters,
@@ -42,6 +39,6 @@ public protocol NetworkService: AnyObject {
         _ request: HTTPRequest,
         parameters: [String: any Any & Sendable]?,
         method: HTTPMethod,
-    ) async throws -> HTTPResponse<Response>
+    ) async throws -> HTTPResponse<Data>
 
 }

@@ -54,7 +54,7 @@ open class Netti: @unchecked Sendable {
             }
             
             let encodedParameters = jsonManager.encoder.toDictionary(parameters)
-            let response = try await service.send(request, parameters: encodedParameters, method: method)
+            let response: HTTPResponse<Data> = try await service.send(request, parameters: encodedParameters, method: method)
             let decodedData = try jsonManager.decode(Response.self, from: response.data)
             
             return HTTPResponse<Response>(
