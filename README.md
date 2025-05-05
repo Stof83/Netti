@@ -1,6 +1,6 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/netti-dark.png" width="350">
+  <source media="(prefers-color-scheme: dark)" srcset="./Assets/netti-dark.png" width="350">
   <img alt="logo-library" src="./Assets/netti-dark.png" width="350">
 </picture>
 </div>
@@ -147,10 +147,6 @@ Wrap server responses including:
 - Raw request and response
 - Data or file URL
 - Error if any
-
-### `Empty`
-
-Represents an empty response, useful for endpoints that return no body.
 
 ### `JSONManager`
 
