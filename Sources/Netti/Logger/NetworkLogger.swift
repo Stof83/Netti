@@ -8,9 +8,6 @@
 import Foundation
 import os
 
-import Foundation
-import os
-
 /// A utility for logging network requests and responses in a cURL-compatible format.
 ///
 /// `NetworkLogger` provides simple debugging tools for inspecting outgoing requests
@@ -76,3 +73,86 @@ struct NetworkLogger {
     }
 }
 
+
+extension URLRequest {
+    func asCurl() -> String {
+        guard let url else { return "" }
+        
+        var components = ["curl -v"]
+        components.append("-X \(httpMethod ?? "GET")")
+
+        for (header, value) in allHTTPHeaderFields ?? [:] {
+            components.append("-H \"\(header): \(value)\"")
+        }
+
+        if let body = httpBody, let bodyString = String(data: body, encoding: .utf8) {
+            components.append("-d '\(bodyString)'")
+        }
+
+        components.append("\"\(url.absoluteString)\"")
+        return components.joined(separator: " \\\n\t")
+    }
+}
+
+extension Data {
+    func prettyPrinted() -> String {
+        do {
+            let jsonObject = try JSONSerialization.jsonObject(with: self, options: [])
+            let prettyData = try JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted)
+            return String(data: prettyData, encoding: .utf8) ?? ""
+        } catch {
+            return ""
+        }
+    }
+}
+
+extension DecodingError {
+    /// Returns a detailed, multi-line description of the decoding error.
+    ///
+    /// - Parameters:
+    ///   - type: The type that was attempted to decode.
+    ///   - data: The raw `Data` that failed to decode.
+    /// - Returns: A formatted string describing the error and its context.
+    public func stringDescription<T: Decodable>(as type: T.Type, data: Data) -> String {
+        var lines: [String] = []
+        lines.append("Decoding failed for type: \(T.self)")
+
+        switch self {
+        case .typeMismatch(let expected, let context):
+            lines.append("Type mismatch: expected \(expected)")
+            lines.append("Coding path: \(context.codingPath.pathString())")
+            lines.append("Debug description: \(context.debugDescription)")
+
+        case .valueNotFound(let expected, let context):
+            lines.append("Value not found: \(expected)")
+            lines.append("Coding path: \(context.codingPath.pathString())")
+            lines.append("Debug description: \(context.debugDescription)")
+
+        case .keyNotFound(let key, let context):
+            lines.append("Key not found: '\(key.stringValue)'")
+            lines.append("Coding path: \(context.codingPath.pathString())")
+            lines.append("Debug description: \(context.debugDescription)")
+
+        case .dataCorrupted(let context):
+            lines.append("Data corrupted")
+            lines.append("Coding path: \(context.codingPath.pathString())")
+            lines.append("Debug description: \(context.debugDescription)")
+
+        @unknown default:
+            lines.append("Unknown decoding error")
+        }
+
+        if let rawJSON = String(data: data, encoding: .utf8) {
+            lines.append("Raw JSON:")
+            lines.append(rawJSON)
+        }
+
+        return lines.joined(separator: "\n")
+    }
+}
+
+private extension Array where Element == CodingKey {
+    func pathString() -> String {
+        map(\.stringValue).joined(separator: ".")
+    }
+}
