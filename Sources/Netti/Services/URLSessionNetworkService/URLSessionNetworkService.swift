@@ -43,14 +43,16 @@ public final class URLSessionNetworkService: NetworkService, @unchecked Sendable
         parameters: [String: any Any & Sendable]?,
         method: HTTPMethod
     ) async throws -> HTTPResponse<Data> {
-        var request = try request.asURLRequest(for: method)
+        var urlRequest = try request.asURLRequest(for: method)
 
-        try configuration.urlEncoding.encode(&request, with: parameters)
+        try configuration.urlEncoding.encode(&urlRequest, with: parameters)
 
-        let (data, response) = try await session.data(for: request)
+        NetworkLogger.shared.log(urlRequest)
+        
+        let (data, response) = try await session.data(for: urlRequest)
 
         return HTTPResponse(
-            request: request,
+            request: urlRequest,
             response: response as? HTTPURLResponse,
             data: data,
             error: nil

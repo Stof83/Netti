@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import os
 
 /// A high-level wrapper around a `NetworkService` for making API requests and decoding responses.
 ///
@@ -14,7 +15,9 @@ import Foundation
 open class Netti: @unchecked Sendable {
     private let service: NetworkService
     private let jsonManager: JSONManager
-
+    
+    private let logger = Logger(subsystem: "Netti", category: "network")
+    
     /// Initializes a new `Netti` instance.
     ///
     /// - Parameters:
@@ -45,7 +48,7 @@ open class Netti: @unchecked Sendable {
     /// - Throws: `NetworkError.decoding` if decoding fails, `NetworkError.transport` for other issues.
     open func send<Parameters: Encodable & Sendable, Response: Decodable>(
         _ request: HTTPRequest,
-        parameters: Parameters? = nil,
+        parameters: Parameters? = Empty?.none,
         method: HTTPMethod
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         do {
@@ -55,37 +58,25 @@ open class Netti: @unchecked Sendable {
             
             let encodedParameters = jsonManager.encoder.toDictionary(parameters)
             let response: HTTPResponse<Data> = try await service.send(request, parameters: encodedParameters, method: method)
-            let decodedData = try jsonManager.decode(Response.self, from: response.data)
             
-            return HTTPResponse<Response>(
-                request: response.request,
-                response: response.response,
-                data: decodedData,
-                error: response.error
-            )
-        } catch let error as DecodingError {
-            throw .decodingFailed(error)
+            NetworkLogger.shared.log(response)
+            
+            do {
+                let decodedData = try jsonManager.decode(Response.self, from: response.data)
+                
+                return HTTPResponse<Response>(
+                    request: response.request,
+                    response: response.response,
+                    data: decodedData,
+                    error: response.error
+                )
+            } catch let error as DecodingError {
+                NetworkLogger.shared.log(error, type: Response.self, data: response.data ?? Data())
+                throw HTTPRequestError.decodingFailed(error)
+            }
         } catch {
             throw .requestFailed(error)
         }
-    }
-
-    /// Sends a network request without parameters and returns the decoded response.
-    ///
-    /// This is a convenience overload for endpoints that do not require any body parameters.
-    ///
-    /// - Parameters:
-    ///   - request: The `HTTPRequest` object representing the endpoint and headers.
-    ///   - method: The HTTP method to use, such as `.get` or `.delete`.
-    ///
-    /// - Returns: A `HTTPResponse<Response>` containing the decoded body.
-    ///
-    /// - Throws: Any error thrown during the request or decoding process.
-    open func send<Response: Decodable>(
-        _ request: HTTPRequest,
-        method: HTTPMethod
-    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(request, parameters: Empty?.none, method: method)
     }
 
     /// Decodes raw `Data` into a strongly typed `HTTPResponse`.

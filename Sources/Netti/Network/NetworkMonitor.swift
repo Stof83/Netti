@@ -7,7 +7,6 @@
 
 import Foundation
 import Network
-import Combine
 
 /// Monitors network connectivity and publishes updates about connection status.
 ///

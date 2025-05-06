@@ -87,10 +87,11 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
         let encoding: ParameterEncoding = method == .get ? configuration.urlEncoding : configuration.jsonEncoding
         let encodedRequest = try encoding.encode(urlRequest, with: parameters)
 
+        NetworkLogger.shared.log(encodedRequest)
+        
         let response = await session.request(encodedRequest)
             .cacheResponse(using: configuration.cacheResponse)
             .validate()
-            .cURLDescription { print($0) }
             .serializingData()
             .response
 
