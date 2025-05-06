@@ -14,7 +14,7 @@ extension DecodingError {
     ///   - type: The type that was attempted to decode.
     ///   - data: The raw `Data` that failed to decode.
     /// - Returns: A formatted string describing the error and its context.
-    func stringDescription<T: Decodable>(as type: T.Type, data: Data) -> String {
+    public func stringDescription<T: Decodable>(as type: T.Type, data: Data) -> String {
         var lines: [String] = []
         lines.append("Decoding failed for type: \(T.self)")
 

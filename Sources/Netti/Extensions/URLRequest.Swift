@@ -7,8 +7,8 @@
 
 import Foundation
 
-public extension URLRequest {
-    func asCurl() -> String {
+extension URLRequest {
+    public func asCurl() -> String {
         guard let url else { return "" }
         
         var components = ["curl -v"]
