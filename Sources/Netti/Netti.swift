@@ -61,8 +61,17 @@ open class Netti: @unchecked Sendable {
             
             NetworkLogger.shared.log(response)
             
+            guard let data = response.data else {
+                return HTTPResponse<Response>(
+                    request: response.request,
+                    response: response.response,
+                    data: nil,
+                    error: response.error
+                )
+            }
+            
             do {
-                let decodedData = try jsonManager.decode(Response.self, from: response.data)
+                let decodedData = try jsonManager.decode(Response.self, from: data)
                 
                 return HTTPResponse<Response>(
                     request: response.request,
@@ -71,7 +80,7 @@ open class Netti: @unchecked Sendable {
                     error: response.error
                 )
             } catch let error as DecodingError {
-                NetworkLogger.shared.log(error, type: Response.self, data: response.data ?? Data())
+                NetworkLogger.shared.log(error, type: Response.self, data: data)
                 throw HTTPRequestError.decodingFailed(error)
             }
         } catch {
