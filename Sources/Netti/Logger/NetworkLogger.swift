@@ -38,7 +38,7 @@ struct NetworkLogger {
     func log(_ request: URLRequest) {
         let curl = request.asCurl()
         if isPreview {
-            print("🔍 [Preview] \(curl)")
+            print("\(curl)\n\n")
         } else {
             logger.debug("\(curl, privacy: .private)")
         }
@@ -57,7 +57,7 @@ struct NetworkLogger {
     func log(_ httpResponse: HTTPResponse<Data>) {
         guard let request = httpResponse.request else {
             if isPreview {
-                print("[Preview] Missing request in HTTPResponse")
+                print("Missing request in HTTPResponse\n\n")
             } else {
                 logger.error("Missing request in HTTPResponse")
             }
@@ -67,7 +67,7 @@ struct NetworkLogger {
             let message = "Missing response for request: \(request.url?.absoluteString ?? "Unknown URL")"
             
             if isPreview {
-                print("[Preview] \(message)")
+                print("\(message)\n\n")
             } else {
                 logger.error("\(message, privacy: .private)")
             }
@@ -81,7 +81,7 @@ struct NetworkLogger {
         """
         
         if isPreview {
-            print("[Preview]\n\(logMessage)")
+            print("\(logMessage)\n")
         } else {
             logger.debug("\(logMessage, privacy: .private)")
         }
