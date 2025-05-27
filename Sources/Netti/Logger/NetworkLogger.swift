@@ -20,6 +20,7 @@ struct NetworkLogger {
     static let shared = NetworkLogger()
     
     private let logger: Logger
+    private let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
 
     /// Initializes a new instance of `NetworkLogger` with default subsystem and category.
     ///
@@ -35,7 +36,12 @@ struct NetworkLogger {
     ///
     /// - Parameter request: The `URLRequest` to log.
     func log(_ request: URLRequest) {
-        logger.debug("\(request.asCurl(), privacy: .private)")
+        let curl = request.asCurl()
+        if isPreview {
+            print("🔍 [Preview] \(curl)")
+        } else {
+            logger.debug("\(curl, privacy: .private)")
+        }
     }
 
     /// Logs an `HTTPResponse<Data>` including request metadata, status code, and optionally a pretty-printed body or error.
@@ -50,22 +56,35 @@ struct NetworkLogger {
     /// - Parameter httpResponse: The `HTTPResponse<Data>` object to log.
     func log(_ httpResponse: HTTPResponse<Data>) {
         guard let request = httpResponse.request else {
-            logger.error("Missing request in HTTPResponse")
+            if isPreview {
+                print("[Preview] Missing request in HTTPResponse")
+            } else {
+                logger.error("Missing request in HTTPResponse")
+            }
             return
         }
         guard let response = httpResponse.response else {
-            logger.error("Missing response for request: \(request.url?.absoluteString ?? "Unknown URL")")
+            let message = "Missing response for request: \(request.url?.absoluteString ?? "Unknown URL")"
+            
+            if isPreview {
+                print("[Preview] \(message)")
+            } else {
+                logger.error("\(message, privacy: .private)")
+            }
             return
         }
 
         let prettyResponse = httpResponse.data?.prettyPrinted() ?? httpResponse.error?.localizedDescription ?? ""
-
         let logMessage = """
         \(request.httpMethod ?? "Unknown method") - \(request.url?.absoluteString ?? "Unknown URL") - \(response.statusCode)\n
         \(prettyResponse)\n
         """
-
-        logger.debug("\(logMessage, privacy: .private)")
+        
+        if isPreview {
+            print("[Preview]\n\(logMessage)")
+        } else {
+            logger.debug("\(logMessage, privacy: .private)")
+        }
     }
     
     func log<T: Decodable>(_ error: DecodingError, type: T.Type, data: Data) {

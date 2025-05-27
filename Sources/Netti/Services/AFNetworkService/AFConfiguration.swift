@@ -32,7 +32,7 @@ public struct AFConfiguration {
     public init(
         serverTrustManager: ServerTrustManager? = nil,
         cacheResponse: ResponseCacher = .doNotCache,
-        urlEncoding: URLEncoding = URLEncoding.default, // URLEncoding.init(arrayEncoding: .noBrackets, boolEncoding: .literal),
+        urlEncoding: URLEncoding = URLEncoding.init(arrayEncoding: .noBrackets, boolEncoding: .literal),
         jsonEncoding: JSONEncoding = JSONEncoding.default
     ) {
         self.serverTrustManager = serverTrustManager

@@ -29,8 +29,8 @@ Netti is a modular, type-safe Swift networking library built on top of Alamofire
 
 ### Requirements
 
-- iOS 13.0+ / macOS 10.15+
-- Swift 5.6+
+- iOS 14.0+ / macOS 11+ / tvOS 14+ / watchOS 7+ / macCatalyst 14+
+- Swift 6.1+
 - Alamofire
 
 ### Installation
