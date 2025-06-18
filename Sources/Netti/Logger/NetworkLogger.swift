@@ -63,6 +63,7 @@ struct NetworkLogger {
             }
             return
         }
+        
         guard let response = httpResponse.response else {
             let message = "Missing response for request: \(request.url?.absoluteString ?? "Unknown URL")"
             

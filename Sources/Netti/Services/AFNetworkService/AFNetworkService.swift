@@ -98,7 +98,7 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
         return HTTPResponse(
             request: response.request,
             response: response.response,
-            data: response.value,
+            data: response.data,
             error: response.error
         )
     }
