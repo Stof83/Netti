@@ -66,6 +66,7 @@ open class Netti: @unchecked Sendable {
                     request: response.request,
                     response: response.response,
                     data: nil,
+                    rawData: nil,
                     error: response.error
                 )
             }
@@ -77,6 +78,7 @@ open class Netti: @unchecked Sendable {
                     request: response.request,
                     response: response.response,
                     data: decodedData,
+                    rawData: response.rawData,
                     error: response.error
                 )
             } catch let error as DecodingError {
@@ -99,7 +101,7 @@ open class Netti: @unchecked Sendable {
     public func decode<Response: Decodable>(_ data: Data) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         do {
             let decoded = try jsonManager.decode(Response.self, from: data)
-            return HTTPResponse<Response>(request: nil, response: nil, data: decoded, error: nil)
+            return HTTPResponse<Response>(request: nil, response: nil, data: decoded, rawData: data, error: nil)
         } catch {
             throw .decodingFailed(error)
         }
