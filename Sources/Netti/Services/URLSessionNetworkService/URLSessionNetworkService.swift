@@ -55,6 +55,7 @@ public final class URLSessionNetworkService: NetworkService, @unchecked Sendable
             request: urlRequest,
             response: response as? HTTPURLResponse,
             data: data,
+            rawData: data,
             error: nil
         )
     }

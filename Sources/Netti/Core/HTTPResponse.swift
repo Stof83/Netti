@@ -20,6 +20,9 @@ public struct HTTPResponse<T>: Sendable where T: Sendable & Decodable {
     /// The data returned by the server.
     public let data: T?
     
+    /// The data returned by the server.
+    public let rawData: Data?
+    
     /// The error returned by the server.
     public let error: Error?
 
