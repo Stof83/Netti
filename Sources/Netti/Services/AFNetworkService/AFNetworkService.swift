@@ -84,7 +84,13 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
         method: HTTPMethod
     ) async throws -> HTTPResponse<Data> {
         let urlRequest = try request.asURLRequest(for: method)
-        let encoding: ParameterEncoding = method == .get ? configuration.urlEncoding : configuration.jsonEncoding
+        
+        let encoding: ParameterEncoding = switch method {
+            case .get, .delete, .head: configuration.urlEncoding /// query string
+            case .post, .put, .patch: configuration.jsonEncoding /// HTTP body
+            default: configuration.urlEncoding /// safe fallback
+        }
+        
         let encodedRequest = try encoding.encode(urlRequest, with: parameters)
 
         NetworkLogger.shared.log(encodedRequest)

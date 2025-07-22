@@ -45,7 +45,15 @@ public final class URLSessionNetworkService: NetworkService, @unchecked Sendable
     ) async throws -> HTTPResponse<Data> {
         var urlRequest = try request.asURLRequest(for: method)
 
-        try configuration.urlEncoding.encode(&urlRequest, with: parameters)
+        let encoder: ParameterEncoder = switch method {
+            case .get, .delete, .head: configuration.urlEncoding /// query string
+            case .post, .put, .patch: configuration.jsonEncoding /// HTTP body
+            default: configuration.urlEncoding /// safe fallback
+        }
+
+        if let parameters {
+            try encoder.encode(&urlRequest, with: parameters)
+        }
 
         NetworkLogger.shared.log(urlRequest)
         
