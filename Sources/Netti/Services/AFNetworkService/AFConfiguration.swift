@@ -26,12 +26,12 @@ public struct AFConfiguration {
     ///
     /// - Parameters:
     ///   - serverTrustManager: The `ServerTrustManager` used for SSL pinning and server trust evaluations.
-    ///   - cacheResponse: The `ResponseCacher` used for caching responses. Defaults to `.doNotCache`.
+    ///   - cacheResponse: The `ResponseCacher` used for caching responses. Defaults to `.cache`.
     ///   - urlEncoding: The parameter encoding used for URL-based requests. Defaults to `URLEncoding.init(arrayEncoding: .noBrackets, boolEncoding: .literal)`.
     ///   - jsonEncoding: The parameter encoding used for JSON-based requests. Defaults to `JSONEncoding.default`.
     public init(
         serverTrustManager: ServerTrustManager? = nil,
-        cacheResponse: ResponseCacher = .doNotCache,
+        cacheResponse: ResponseCacher = .cache,
         urlEncoding: URLEncoding = URLEncoding.init(arrayEncoding: .noBrackets, boolEncoding: .literal),
         jsonEncoding: JSONEncoding = JSONEncoding.default
     ) {
