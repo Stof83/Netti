@@ -20,7 +20,7 @@ extension Encodable {
     ) -> [String: Any]? {
         
         let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale.current
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.timeZone = TimeZone.current
         dateFormatter.dateFormat = dateFormat
 
