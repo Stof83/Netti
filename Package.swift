@@ -7,8 +7,8 @@ let package = Package(
     name: "Netti",
     platforms: [
         .macOS(.v11),
-        .iOS(.v14),
-        .tvOS(.v14),
+        .iOS(.v17),
+        .tvOS(.v17),
         .watchOS(.v7),
         .macCatalyst(.v14),
     ],

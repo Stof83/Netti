@@ -31,7 +31,7 @@ public struct AFConfiguration {
     ///   - jsonEncoding: The parameter encoding used for JSON-based requests. Defaults to `JSONEncoding.default`.
     public init(
         serverTrustManager: ServerTrustManager? = nil,
-        cacheResponse: ResponseCacher = .cache,
+        cacheResponse: ResponseCacher = .doNotCache,
         urlEncoding: URLEncoding = URLEncoding.init(arrayEncoding: .noBrackets, boolEncoding: .literal),
         jsonEncoding: JSONEncoding = JSONEncoding.default
     ) {

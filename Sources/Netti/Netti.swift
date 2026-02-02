@@ -15,7 +15,13 @@ import os
 open class Netti: @unchecked Sendable {
     private let service: NetworkService
     private let jsonManager: JSONManager
+    private let cacheStore: HTTPCacheStore
+    private let networkMonitor: NetworkMonitor
     
+    // Internal queue to manage offline requests
+    private let requestQueue = HTTPRequestQueue()
+    private var monitorTask: Task<Void, Never>?
+
     private let logger = Logger(subsystem: "Netti", category: "network")
     
     /// Initializes a new `Netti` instance.
@@ -23,13 +29,31 @@ open class Netti: @unchecked Sendable {
     /// - Parameters:
     ///   - service: A `NetworkService` instance responsible for executing low-level HTTP requests.
     ///   - jsonManager: An optional `JSONManager` used for encoding parameters and decoding responses.
-    ///                  Defaults to a standard implementation.
+    ///
+    @MainActor
     public init(
         service: NetworkService = AFNetworkService(),
         jsonManager: JSONManager = .init()
     ) {
         self.service = service
         self.jsonManager = jsonManager
+        self.cacheStore = .init(diskCache: DiskCache())
+        
+        let monitor = NetworkMonitor()
+        self.networkMonitor = monitor
+        
+        // Start observing network changes to manage the queue
+        self.monitorTask = Task { [weak self] in
+            for await status in monitor.statusStream {
+                if status == .connected {
+                    await self?.requestQueue.resumeAll()
+                }
+            }
+        }
+    }
+    
+    deinit {
+        monitorTask?.cancel()
     }
 
     /// Sends a network request with optional parameters and returns a decoded typed response.
@@ -55,12 +79,24 @@ open class Netti: @unchecked Sendable {
             if let sampleData = request.sampleData {
                 return try await decode(sampleData)
             }
-            
+           
+            let cacheKey = request.cacheKey(for: method)
+           
+            if await networkMonitor.status == .disconnected {
+                if request.cachePolicy == .cache {
+                    if let cachedData = try await cacheStore.read(key: cacheKey, policy: request.cachePolicy) {
+                        return try await decode(cachedData)
+                    }
+                }
+                
+                try await requestQueue.wait()
+            }
+           
             let encodedParameters = jsonManager.encoder.toDictionary(parameters)
             let response: HTTPResponse<Data> = try await service.send(request, parameters: encodedParameters, method: method)
-            
+           
             NetworkLogger.shared.log(response)
-            
+           
             guard let data = response.data else {
                 return HTTPResponse<Response>(
                     request: response.request,
@@ -70,10 +106,16 @@ open class Netti: @unchecked Sendable {
                     error: response.error
                 )
             }
-            
+           
+            if request.cachePolicy == .cache {
+                Task.detached(priority: .background) {
+                    try? await self.cacheStore.write(data, key: cacheKey)
+                }
+            }
+           
             do {
                 let decodedData = try jsonManager.decode(Response.self, from: data)
-                
+              
                 return HTTPResponse<Response>(
                     request: response.request,
                     response: response.response,

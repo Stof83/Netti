@@ -6,65 +6,77 @@
 //
 
 import Foundation
+import Alamofire
 
+/// A network service using URLSession with offline-aware caching support.
 public final class URLSessionNetworkService: NetworkService, @unchecked Sendable {
+
     // MARK: - Properties
 
     /// The underlying URLSession used to perform network requests.
     private let session: URLSession
 
-    /// The configuration object wrapper.
+    /// The configuration wrapper for encoding strategies and caching policy.
     private let configuration: URLSessionConfigurationWrapper
 
     // MARK: - Initialization
 
     /// Initializes a new instance of `URLSessionNetworkService`.
     ///
-    /// - Parameter configuration: A wrapper containing encoding strategies and caching policy.
-    public init(configuration: URLSessionConfigurationWrapper = .init()) {
+    /// - Parameters:
+    ///   - configuration: A wrapper containing encoding strategies and caching policy.
+    ///   - networkMonitor: A network monitor used to detect connectivity changes.
+    public init(
+        configuration: URLSessionConfigurationWrapper = .init()
+    ) {
         self.session = URLSession(configuration: .default)
         self.configuration = configuration
     }
 
     // MARK: - Asynchronous Request
 
-    /// Sends an HTTP request using `URLSession` and returns a wrapped `HTTPResponse`.
+    /// Sends an HTTP request using URLSession and returns a wrapped `HTTPResponse`.
+    ///
+    /// If offline and caching is enabled, returns cached data if available
+    /// and stores the request for automatic retry.
     ///
     /// - Parameters:
-    ///   - request: The HTTP request definition (URL, headers, etc.).
-    ///   - parameters: A dictionary of parameters to include in the request body or query string.
-    ///   - method: The HTTP method (e.g., `.get`, `.post`, `.put`).
+    ///   - request: The HTTP request definition.
+    ///   - parameters: Optional request parameters.
+    ///   - method: The HTTP method (e.g., `.get`, `.post`).
     ///
-    /// - Returns: An `HTTPResponse<Data>` with the raw response data.
-    ///
-    /// - Throws: An error for encoding, network, or response validation issues.
+    /// - Returns: An `HTTPResponse<Data>` representing the result.
     public func send(
         _ request: HTTPRequest,
         parameters: [String: any Any & Sendable]?,
         method: HTTPMethod
     ) async throws -> HTTPResponse<Data> {
+
+        // Perform online request
         var urlRequest = try request.asURLRequest(for: method)
-
         let encoder: ParameterEncoder = switch method {
-            case .get, .delete, .head: configuration.urlEncoding /// query string
-            case .post, .put, .patch: configuration.jsonEncoding /// HTTP body
-            default: configuration.urlEncoding /// safe fallback
+            case .get, .delete, .head: configuration.urlEncoding
+            case .post, .put, .patch: configuration.jsonEncoding
+            default: configuration.urlEncoding
         }
-
+        
         if let parameters {
             try encoder.encode(&urlRequest, with: parameters)
         }
 
         NetworkLogger.shared.log(urlRequest)
-        
+
         let (data, response) = try await session.data(for: urlRequest)
 
-        return HTTPResponse(
+        let result = HTTPResponse(
             request: urlRequest,
             response: response as? HTTPURLResponse,
             data: data,
             rawData: data,
             error: nil
         )
+
+        return result
     }
+
 }

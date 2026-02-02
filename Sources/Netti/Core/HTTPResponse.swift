@@ -28,6 +28,23 @@ public struct HTTPResponse<T>: Sendable where T: Sendable & Decodable {
 
 }
 
+extension HTTPResponse where T == Data {
+    /// Creates a cached response wrapping raw data.
+    ///
+    /// - Parameter data: The cached data.
+    /// - Returns: An `HTTPResponse<Data>` representing the cached result.
+    public static func cached(data: Data) -> HTTPResponse<Data> {
+        HTTPResponse(
+            request: nil,
+            response: nil,
+            data: data,
+            rawData: data,
+            error: nil
+        )
+    }
+}
+
+
 // MARK: - DownloadResponse
 /// Used to store all data associated with a serialized response of a download request.
 public struct HTTPDownloadResponse<T>: Sendable where T: Sendable & Decodable {

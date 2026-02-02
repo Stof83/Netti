@@ -32,14 +32,14 @@ import Foundation
 ///
 /// This class is thread-safe and designed for modern Swift concurrency with `async/await`.
 public final class AFNetworkService: NetworkService, @unchecked Sendable {
-    // MARK: - Properties
+    // MARK: - Private Properties
 
     /// The Alamofire session used to execute HTTP requests.
     private let session: Session
-
+    
     /// The configuration object specifying trust, caching, and encoding behavior.
     private let configuration: AFConfiguration
-
+    
     // MARK: - Initialization
 
     /// Initializes a new instance of `AFNetworkService` using the provided configuration.
@@ -51,56 +51,77 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
     /// SSL pinning and trust evaluations for secure communication.
     public init(configuration: AFConfiguration = .init()) {
         self.configuration = configuration
-
+        
+        let sessionConfiguration = URLSessionConfiguration.af.default
+        
         if let trustManager = configuration.serverTrustManager {
-            let sessionConfiguration = URLSessionConfiguration.af.default
-            self.session = Session(configuration: sessionConfiguration, serverTrustManager: trustManager)
+            self.session = Session(
+                configuration: sessionConfiguration,
+                serverTrustManager: trustManager
+            )
         } else {
-            self.session = Session(configuration: URLSessionConfiguration.af.default)
+            self.session = Session(configuration: sessionConfiguration)
         }
+        
     }
-
+    
     // MARK: - Asynchronous Request using async/await
 
-    /// Sends an HTTP request using the configured Alamofire session and returns a wrapped HTTP response.
+    /// Sends an HTTP request and returns a wrapped HTTP response.
     ///
-    /// This method supports both URL-encoded and JSON-encoded parameters, based on the request method.
-    /// It validates the response, applies the configured caching policy, and returns an `HTTPResponse`
-    /// object containing the request, response, raw data, and any error encountered.
+    /// When offline, cached data is returned if available and the request
+    /// is stored for automatic retry once connectivity is restored.
     ///
     /// - Parameters:
-    ///   - request: The HTTP request configuration (URL, headers, etc.) to be sent.
-    ///   - parameters: A dictionary of parameters to include in the request body or query string.
-    ///     Values must conform to both `Any` and `Sendable`.
-    ///   - method: The HTTP method to use, such as `.get`, `.post`, `.put`, etc.
+    ///   - request: The HTTP request definition.
+    ///   - parameters: Optional request parameters.
+    ///   - method: The HTTP method to use.
     ///
-    /// - Returns: An `HTTPResponse<Data?>` object that contains the original request, HTTPURLResponse,
-    ///   optional data, and any error encountered during the request.
-    ///
-    /// - Throws: An error if request encoding fails.
+    /// - Returns: An `HTTPResponse<Data>` representing the result.
     public func send(
         _ request: HTTPRequest,
         parameters: [String: any Any & Sendable]?,
         method: HTTPMethod
     ) async throws -> HTTPResponse<Data> {
+        
+        let response = try await performNetworkRequest(
+            request,
+            parameters: parameters,
+            method: method
+        )
+        
+        return response
+    }
+    
+    // MARK: - Private Helpers
+
+    /// Executes the actual Alamofire request.
+    private func performNetworkRequest(
+        _ request: HTTPRequest,
+        parameters: [String: any Any & Sendable]?,
+        method: HTTPMethod
+    ) async throws -> HTTPResponse<Data> {
+        
         let urlRequest = try request.asURLRequest(for: method)
         
         let encoding: ParameterEncoding = switch method {
-            case .get, .delete, .head: configuration.urlEncoding /// query string
-            case .post, .put, .patch: configuration.jsonEncoding /// HTTP body
-            default: configuration.urlEncoding /// safe fallback
+            case .get, .delete, .head:
+                configuration.urlEncoding
+            case .post, .put, .patch:
+                configuration.jsonEncoding
+            default:
+                configuration.urlEncoding
         }
         
         let encodedRequest = try encoding.encode(urlRequest, with: parameters)
-
+        
         NetworkLogger.shared.log(encodedRequest)
         
         let response = await session.request(encodedRequest)
-            .cacheResponse(using: configuration.cacheResponse)
             .validate()
             .serializingData()
             .response
-
+        
         return HTTPResponse(
             request: response.request,
             response: response.response,
@@ -109,4 +130,5 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
             error: response.error
         )
     }
+        
 }

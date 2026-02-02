@@ -31,6 +31,13 @@ public protocol HTTPRequest {
     /// The timeout interval for the network request, in seconds.
     var timeoutInterval: TimeInterval { get }
 
+    /// The cache policy associated with the request.
+    ///
+    /// This value is evaluated by the networking layer to determine
+    /// whether and how the response should be cached and reused
+    /// when the device is offline.
+    var cachePolicy: HTTPCachePolicy { get }
+
     /// Converts the instance into a `URLRequest` with the specified HTTP method.
     ///
     /// - Parameter method: The HTTP method to use for the request.
@@ -55,6 +62,9 @@ extension HTTPRequest {
     /// A default implementation providing a timeout interval of 60 seconds.
     public var timeoutInterval: TimeInterval { 60 }
 
+    /// A default cache policy disabling caching.
+    public var cachePolicy: HTTPCachePolicy { .none }
+
     /// Converts the instance into a `URLRequest` with the specified HTTP method.
     ///
     /// - Parameter method: The HTTP method to use for the request.
@@ -69,3 +79,35 @@ extension HTTPRequest {
         return urlRequest
     }
 }
+
+extension HTTPRequest {
+    /// Generates a deterministic cache key uniquely identifying the semantic request.
+    ///
+    /// This function is used internally by the networking and caching layers and
+    /// is not intended to be accessed outside of the Core networking module.
+    ///
+    /// The generated key is derived from:
+    /// - The resolved request path
+    /// - The provided HTTP method
+    /// - Sorted query parameters
+    ///
+    /// - Parameter method: The HTTP method associated with the request.
+    /// - Returns: A stable, hashed cache key string.
+    func cacheKey(for method: HTTPMethod) -> String {
+        let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false)
+
+        let query = components?.queryItems?
+            .sorted { $0.name < $1.name }
+            .map { "\($0.name)=\($0.value ?? "")" }
+            .joined(separator: "&") ?? ""
+
+        let rawKey = [
+            requestURL.path,
+            method.rawValue,
+            query
+        ].joined(separator: "|")
+
+        return rawKey.sha256
+    }
+}
+
