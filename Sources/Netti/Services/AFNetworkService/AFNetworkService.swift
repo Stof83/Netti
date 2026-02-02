@@ -93,6 +93,51 @@ public final class AFNetworkService: NetworkService, @unchecked Sendable {
         return response
     }
     
+    /// Sends a raw URLRequest directly.
+    ///
+    /// - Parameter request: The native `URLRequest` to execute.
+    /// - Returns: An `HTTPResponse` object containing the raw `Data`.
+    public func send(_ request: URLRequest) async throws -> HTTPResponse<Data> {
+        
+        NetworkLogger.shared.log(request)
+        
+        let response = await session.request(request)
+            .validate()
+            .serializingData()
+            .response
+        
+        return HTTPResponse(
+            request: response.request,
+            response: response.response,
+            data: response.data,
+            rawData: response.data,
+            error: response.error
+        )
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Creates a `URLRequest` from the given parameters without sending it.
+    public func createURLRequest(
+        _ request: HTTPRequest,
+        parameters: [String: any Any & Sendable]?,
+        method: HTTPMethod
+    ) throws -> URLRequest {
+        
+        let urlRequest = try request.asURLRequest(for: method)
+        
+        let encoding: ParameterEncoding = switch method {
+            case .get, .delete, .head:
+                configuration.urlEncoding
+            case .post, .put, .patch:
+                configuration.jsonEncoding
+            default:
+                configuration.urlEncoding
+        }
+        
+        return try encoding.encode(urlRequest, with: parameters)
+    }
+    
     // MARK: - Private Helpers
 
     /// Executes the actual Alamofire request.

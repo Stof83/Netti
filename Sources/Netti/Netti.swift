@@ -131,6 +131,63 @@ open class Netti: @unchecked Sendable {
             throw .requestFailed(error)
         }
     }
+    
+    /// Sends a raw URLRequest and returns a decoded response.
+    /// Note: This bypasses Netti's internal Caching and SampleData logic typically tied to HTTPRequest objects.
+    ///
+    /// - Parameters:
+    ///   - urlRequest: The native `URLRequest` to execute.
+    /// - Returns: A `HTTPResponse<Response>` object containing the decoded response.
+    open func send<Response: Decodable>(
+        _ urlRequest: URLRequest
+    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
+        do {
+            if await networkMonitor.status == .disconnected {
+                try await requestQueue.wait()
+            }
+            
+            let response: HTTPResponse<Data> = try await service.send(urlRequest)
+            
+            NetworkLogger.shared.log(response)
+            
+            guard let data = response.data else {
+                return HTTPResponse<Response>(
+                    request: response.request,
+                    response: response.response,
+                    data: nil,
+                    rawData: nil,
+                    error: response.error
+                )
+            }
+            
+            do {
+                let decodedData = try jsonManager.decode(Response.self, from: data)
+                
+                return HTTPResponse<Response>(
+                    request: response.request,
+                    response: response.response,
+                    data: decodedData,
+                    rawData: response.rawData,
+                    error: response.error
+                )
+            } catch let error as DecodingError {
+                NetworkLogger.shared.log(error, type: Response.self, data: data)
+                throw HTTPRequestError.decodingFailed(error)
+            }
+        } catch {
+            throw .requestFailed(error)
+        }
+    }
+    
+    /// Constructs a URLRequest without sending it.
+    open func buildRequest<Parameters: Encodable & Sendable>(
+        _ request: HTTPRequest,
+        parameters: Parameters? = Empty?.none,
+        method: HTTPMethod
+    ) throws -> URLRequest {
+        let encodedParameters = jsonManager.encoder.toDictionary(parameters)
+        return try service.createURLRequest(request, parameters: encodedParameters, method: method)
+    }
 
     /// Decodes raw `Data` into a strongly typed `HTTPResponse`.
     ///

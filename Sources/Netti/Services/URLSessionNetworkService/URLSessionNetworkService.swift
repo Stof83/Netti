@@ -78,5 +78,48 @@ public final class URLSessionNetworkService: NetworkService, @unchecked Sendable
 
         return result
     }
+    
+    /// Sends a raw URLRequest directly.
+    ///
+    /// - Parameter request: The native `URLRequest` to execute.
+    /// - Returns: An `HTTPResponse` object containing the raw `Data`.
+    public func send(_ request: URLRequest) async throws -> HTTPResponse<Data> {
+        
+        NetworkLogger.shared.log(request)
+
+        let (data, response) = try await session.data(for: request)
+
+        return HTTPResponse(
+            request: request,
+            response: response as? HTTPURLResponse,
+            data: data,
+            rawData: data,
+            error: nil
+        )
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Creates a `URLRequest` from the given parameters without sending it.
+    public func createURLRequest(
+        _ request: HTTPRequest,
+        parameters: [String: any Any & Sendable]?,
+        method: HTTPMethod
+    ) throws -> URLRequest {
+        
+        var urlRequest = try request.asURLRequest(for: method)
+        
+        let encoder: ParameterEncoder = switch method {
+            case .get, .delete, .head: configuration.urlEncoding
+            case .post, .put, .patch: configuration.jsonEncoding
+            default: configuration.urlEncoding
+        }
+        
+        if let parameters {
+            try encoder.encode(&urlRequest, with: parameters)
+        }
+        
+        return urlRequest
+    }
 
 }

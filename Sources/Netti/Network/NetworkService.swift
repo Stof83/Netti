@@ -41,4 +41,29 @@ public protocol NetworkService: AnyObject {
         method: HTTPMethod,
     ) async throws -> HTTPResponse<Data>
 
+    /// Sends a raw `URLRequest` and returns the raw response data.
+    ///
+    /// This method bypasses the internal request construction logic and executes a fully configured `URLRequest` directly.
+    /// It is particularly useful for processing requests retrieved from an offline queue or constructed externally.
+    ///
+    /// - Parameter request: The native `URLRequest` to execute.
+    /// - Returns: A `HTTPResponse` object containing the raw `Data` and metadata.
+    /// - Throws: An `HTTPError` if the network transport fails.
+    func send(_ request: URLRequest) async throws -> HTTPResponse<Data>
+    
+    /// Creates a `URLRequest` without sending it.
+    ///
+    /// This method is essential for offline caching and background queueing, allowing
+    /// the creation of a fully configured request that can be stored and executed later.
+    ///
+    /// - Parameters:
+    ///   - request: The HTTP request configuration.
+    ///   - parameters: Optional dictionary of parameters to encode.
+    ///   - method: The HTTP method to use.
+    /// - Returns: A fully configured `URLRequest`.
+    func createURLRequest(
+        _ request: HTTPRequest,
+        parameters: [String: any Any & Sendable]?,
+        method: HTTPMethod
+    ) throws -> URLRequest
 }
