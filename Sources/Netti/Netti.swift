@@ -18,10 +18,6 @@ open class Netti: @unchecked Sendable {
     private let cacheStore: HTTPCacheStore
     private let networkMonitor: NetworkMonitor
     
-    // Internal queue to manage offline requests
-    private let requestQueue = HTTPRequestQueue()
-    private var monitorTask: Task<Void, Never>?
-
     private let logger = Logger(subsystem: "Netti", category: "network")
     
     /// Initializes a new `Netti` instance.
@@ -39,23 +35,10 @@ open class Netti: @unchecked Sendable {
         self.jsonManager = jsonManager
         self.cacheStore = .init(diskCache: DiskCache())
         
-        let monitor = NetworkMonitor()
-        self.networkMonitor = monitor
+        self.networkMonitor = NetworkMonitor()
         
-        // Start observing network changes to manage the queue
-        self.monitorTask = Task { [weak self] in
-            for await status in monitor.statusStream {
-                if status == .connected {
-                    await self?.requestQueue.resumeAll()
-                }
-            }
-        }
     }
     
-    deinit {
-        monitorTask?.cancel()
-    }
-
     /// Sends a network request with optional parameters and returns a decoded typed response.
     ///
     /// This method is generic over both the request's parameter type and the expected response type.
@@ -82,14 +65,12 @@ open class Netti: @unchecked Sendable {
            
             let cacheKey = request.cacheKey(for: method)
            
-            if await networkMonitor.status == .disconnected {
+            if await networkMonitor.isDisconnected {
                 if request.cachePolicy == .cache {
                     if let cachedData = try await cacheStore.read(key: cacheKey, policy: request.cachePolicy) {
                         return try await decode(cachedData)
                     }
                 }
-                
-                try await requestQueue.wait()
             }
            
             let encodedParameters = jsonManager.encoder.toDictionary(parameters)
@@ -142,9 +123,6 @@ open class Netti: @unchecked Sendable {
         _ urlRequest: URLRequest
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         do {
-            if await networkMonitor.status == .disconnected {
-                try await requestQueue.wait()
-            }
             
             let response: HTTPResponse<Data> = try await service.send(urlRequest)
             

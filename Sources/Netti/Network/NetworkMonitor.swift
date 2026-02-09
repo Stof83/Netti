@@ -28,7 +28,7 @@ public class NetworkMonitor {
     /// A stream of status updates for async observation.
     public let statusStream: AsyncStream<Status>
 
-    @ObservationIgnored public var isDisconnected: Bool { get async { status == .disconnected } }
+    @ObservationIgnored public var isDisconnected: Bool { get { status == .disconnected } }
     @ObservationIgnored private let monitor: NWPathMonitor
     @ObservationIgnored private let queue = DispatchQueue(label: "NetworkMonitorQueue")
     @ObservationIgnored private var statusContinuation: AsyncStream<Status>.Continuation?
