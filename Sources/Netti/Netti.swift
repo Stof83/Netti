@@ -26,7 +26,6 @@ open class Netti: @unchecked Sendable {
     ///   - service: A `NetworkService` instance responsible for executing low-level HTTP requests.
     ///   - jsonManager: An optional `JSONManager` used for encoding parameters and decoding responses.
     ///
-    @MainActor
     public init(
         service: NetworkService = AFNetworkService(),
         jsonManager: JSONManager = .init()
@@ -36,7 +35,6 @@ open class Netti: @unchecked Sendable {
         self.cacheStore = .init(diskCache: DiskCache())
         
         self.networkMonitor = NetworkMonitor()
-        
     }
     
     /// Sends a network request with optional parameters and returns a decoded typed response.
@@ -65,7 +63,7 @@ open class Netti: @unchecked Sendable {
            
             let cacheKey = request.cacheKey(for: method)
            
-            if await networkMonitor.isDisconnected {
+            if networkMonitor.isDisconnected {
                 if request.cachePolicy == .cache {
                     if let cachedData = try await cacheStore.read(key: cacheKey, policy: request.cachePolicy) {
                         return try await decode(cachedData)

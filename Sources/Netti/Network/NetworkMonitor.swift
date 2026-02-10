@@ -14,10 +14,9 @@ import Observation
 /// This actor uses `NWPathMonitor` to track changes in network availability
 /// and exposes an observable `status` property that can be observed using SwiftUI or Combine.
 @Observable
-@MainActor
-public class NetworkMonitor {
+public class NetworkMonitor:  @unchecked Sendable {
     /// Represents the network connection status.
-    public enum Status: Sendable {
+    public enum Status {
         case connected
         case disconnected
     }
@@ -25,41 +24,23 @@ public class NetworkMonitor {
     /// The current connectivity status. Changes are published on the main thread.
     public private(set) var status: Status = .disconnected
     
-    /// A stream of status updates for async observation.
-    public let statusStream: AsyncStream<Status>
-
-    @ObservationIgnored public var isDisconnected: Bool { get { status == .disconnected } }
+    @ObservationIgnored public var isConnected: Bool { status == .connected }
+    @ObservationIgnored public var isDisconnected: Bool { status == .disconnected }
+    
     @ObservationIgnored private let monitor: NWPathMonitor
     @ObservationIgnored private let queue = DispatchQueue(label: "NetworkMonitorQueue")
-    @ObservationIgnored private var statusContinuation: AsyncStream<Status>.Continuation?
 
     /// Creates and starts the network monitor.
     public init() {
         self.monitor = NWPathMonitor()
         
-        // Initialize the stream and capture the continuation
-        var localContinuation: AsyncStream<Status>.Continuation?
-        self.statusStream = AsyncStream { continuation in
-            localContinuation = continuation
-        }
-        self.statusContinuation = localContinuation
-        
-        guard let continuationToYield = localContinuation else { return }
-        
-        monitor.pathUpdateHandler = { [weak self] path in
-            let newStatus: Status = path.status == .satisfied ? .connected : .disconnected
-            
-            continuationToYield.yield(newStatus)
-
-            Task { @MainActor [weak self] in
-                self?.status = newStatus
-            }
+        monitor.pathUpdateHandler = { path in
+            self.status = path.status == .satisfied ? .connected : .disconnected
         }
         monitor.start(queue: queue)
     }
 
     deinit {
         monitor.cancel()
-        statusContinuation?.finish()
     }
 }
