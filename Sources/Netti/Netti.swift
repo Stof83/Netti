@@ -57,15 +57,17 @@ open class Netti: @unchecked Sendable {
         method: HTTPMethod
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         do {
+            let urlRequest = try? request.asURLRequest(for: method)
+            
             if let sampleData = request.sampleData {
-                return try await decode(sampleData)
+                return try await decode(sampleData, request: urlRequest)
             }
            
             let cacheKey = request.cacheKey(for: method)
            
             if networkMonitor.isDisconnected {
                 if request.cachePolicy == .cache, let cachedData = try await cacheStore.read(key: cacheKey) {
-                    return try await decode(cachedData)
+                    return try await decode(cachedData, request: urlRequest)
                 }
             }
            
@@ -165,16 +167,44 @@ open class Netti: @unchecked Sendable {
 
     /// Decodes raw `Data` into a strongly typed `HTTPResponse`.
     ///
-    /// This is useful for decoding sample data or cached responses without hitting the network.
+    /// This method is intended for decoding non-network payloads such as
+    /// sample JSON, fixtures, or cached responses where no real HTTP exchange
+    /// occurred. Because no network request is performed, the returned
+    /// `HTTPResponse` contains the provided `URLRequest` (if any) and a
+    /// synthesized `HTTPURLResponse` with a `200` status code to represent
+    /// a successful decoding outcome.
     ///
-    /// - Parameter data: The raw JSON data to decode.
-    /// - Returns: A `HTTPResponse<Response>` containing the decoded model.
+    /// - Parameters:
+    ///   - data: The raw JSON data to decode.
+    ///   - request: The originating `URLRequest`, if available.
     ///
-    /// - Throws: A `DecodingError` if the data does not match the expected response type.
-    public func decode<Response: Decodable>(_ data: Data) async throws(HTTPRequestError) -> HTTPResponse<Response> {
+    /// - Returns: An `HTTPResponse<Response>` containing the decoded model,
+    ///   the original raw data, the provided request, and a synthesized
+    ///   successful HTTP response.
+    ///
+    /// - Throws: `HTTPRequestError.decodingFailed` if the data cannot be decoded
+    ///   into the expected response type.
+    public func decode<Response: Decodable>(
+        _ data: Data,
+        request: URLRequest?
+    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         do {
             let decoded = try jsonManager.decode(Response.self, from: data)
-            return HTTPResponse<Response>(request: nil, response: nil, data: decoded, rawData: data, error: nil)
+
+            let response = HTTPURLResponse(
+                url: request?.url ?? URL(string: "about:blank")!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )
+
+            return HTTPResponse<Response>(
+                request: request,
+                response: response,
+                data: decoded,
+                rawData: data,
+                error: nil
+            )
         } catch {
             throw .decodingFailed(error)
         }
