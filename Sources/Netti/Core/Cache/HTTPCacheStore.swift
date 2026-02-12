@@ -39,19 +39,13 @@ actor HTTPCacheStore {
     ///
     /// - Parameters:
     ///   - key: A deterministic cache key uniquely identifying the request.
-    ///   - policy: The cache policy associated with the request.
     ///
     /// - Returns: Cached response data if available; otherwise `nil`.
-    func read(
-        key: String,
-        policy: HTTPCachePolicy
-    ) async throws -> Data? {
-        guard policy == .cache else { return nil  }
-
-        if let memoryValue = memoryCache.object(forKey: key as NSString)?.data {
-            return memoryValue
+    func read(key: String) async throws -> Data? {
+        if let data = memoryCache.object(forKey: key as NSString)?.data {
+            return data
         } else if let data = try await diskCache.read(Data.self, key: key) {
-            memoryCache.setObject(CacheEntry(data), forKey: key as NSString)
+            return data
         }
         
         return nil

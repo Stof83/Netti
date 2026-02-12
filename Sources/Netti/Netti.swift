@@ -64,10 +64,8 @@ open class Netti: @unchecked Sendable {
             let cacheKey = request.cacheKey(for: method)
            
             if networkMonitor.isDisconnected {
-                if request.cachePolicy == .cache {
-                    if let cachedData = try await cacheStore.read(key: cacheKey, policy: request.cachePolicy) {
-                        return try await decode(cachedData)
-                    }
+                if request.cachePolicy == .cache, let cachedData = try await cacheStore.read(key: cacheKey) {
+                    return try await decode(cachedData)
                 }
             }
            
