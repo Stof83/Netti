@@ -15,6 +15,9 @@ import Observation
 /// and exposes an observable `status` property that can be observed using SwiftUI or Combine.
 @Observable
 public class NetworkMonitor:  @unchecked Sendable {
+    
+    public static let shared = NetworkMonitor()
+    
     /// Represents the network connection status.
     public enum Status {
         case connected
