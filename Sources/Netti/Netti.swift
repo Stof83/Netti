@@ -16,7 +16,7 @@ open class Netti: @unchecked Sendable {
     private let service: NetworkService
     private let jsonManager: JSONManager
     private let cacheStore: HTTPCacheStore
-    private let networkMonitor: NetworkMonitor
+    private let networkMonitor = NetworkMonitor.shared
     
     private let logger = Logger(subsystem: "Netti", category: "network")
     
@@ -33,8 +33,6 @@ open class Netti: @unchecked Sendable {
         self.service = service
         self.jsonManager = jsonManager
         self.cacheStore = .init(diskCache: DiskCache())
-        
-        self.networkMonitor = NetworkMonitor()
     }
     
     /// Sends a network request with optional parameters and returns a decoded typed response.
@@ -208,5 +206,43 @@ open class Netti: @unchecked Sendable {
         } catch {
             throw .decodingFailed(error)
         }
+    }
+
+    /// Returns the cached, decoded response for a request without performing any
+    /// network call.
+    ///
+    /// Use this to render a previously cached response immediately — for example,
+    /// before a silent network refresh in a cache-first flow. Unlike the offline
+    /// fallback inside ``send(_:parameters:method:)``, this reads the cache
+    /// regardless of connectivity.
+    ///
+    /// Returns `nil` when the request did not opt into caching
+    /// (`cachePolicy == .none`), when no cached entry exists, or when the cached
+    /// data cannot be decoded into `Response` (for example, after a schema change
+    /// since it was written). In every "miss" case the caller should fall through
+    /// to ``send(_:parameters:method:)``.
+    ///
+    /// - Parameters:
+    ///   - request: The `HTTPRequest` whose cached response should be read.
+    ///   - method: The HTTP method used to compute the cache key. Must match the
+    ///     method originally used when the response was cached.
+    ///
+    /// - Returns: A decoded `HTTPResponse<Response>` carrying a synthesized `200`
+    ///   response, or `nil` on any cache miss.
+    open func cachedResponse<Response: Decodable>(
+        for request: HTTPRequest,
+        method: HTTPMethod
+    ) async -> HTTPResponse<Response>? {
+        guard request.cachePolicy == .cache else { return nil }
+
+        let cacheKey = request.cacheKey(for: method)
+
+        guard let cachedData = try? await cacheStore.read(key: cacheKey) else {
+            return nil
+        }
+
+        let urlRequest = try? request.asURLRequest(for: method)
+
+        return try? await decode(cachedData, request: urlRequest)
     }
 }

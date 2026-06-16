@@ -37,3 +37,16 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# =========================
+# Claude Code
+# =========================
+.claude/
+CLAUDE.md
+config-version.json
+
+# =========================
+# Local Audits & Graph Analysis
+# =========================
+audits/
+graphify-out/
