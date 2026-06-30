@@ -80,6 +80,28 @@ final class DiskCache: @unchecked Sendable {
         try archived.write(to: url, options: .atomic)
     }
 
+    /// Removes the cached file for the given key.
+    ///
+    /// If no file exists for the key, this method returns without error.
+    ///
+    /// - Parameter key: The cache key uniquely identifying the request.
+    func remove(key: String) throws {
+        let url = fileURL(for: key)
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
+    }
+
+    /// Removes all cached files from the disk cache directory.
+    func removeAll() throws {
+        let contents = try fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil
+        )
+        for url in contents {
+            try fileManager.removeItem(at: url)
+        }
+    }
+
     /// Generates a deterministic file URL for a given cache key.
     ///
     /// - Parameter key: The cache key.

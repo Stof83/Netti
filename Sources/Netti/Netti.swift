@@ -208,6 +208,35 @@ open class Netti: @unchecked Sendable {
         }
     }
 
+    /// Removes all cached HTTP responses from both memory and disk.
+    ///
+    /// Call this when stale cached data must be discarded unconditionally — for
+    /// example, on logout or after a server-side schema change that invalidates
+    /// all previously cached responses.
+    ///
+    /// - Throws: An error if the underlying disk cache cannot be cleared.
+    public func clearCache() async throws {
+        try await cacheStore.clearAll()
+    }
+
+    /// Removes the cached HTTP response for a specific request.
+    ///
+    /// Use this to invalidate a single endpoint's cached response — for example,
+    /// after a mutation that makes a previously cached GET response stale.
+    ///
+    /// If no cached entry exists for the request, this method returns without error.
+    ///
+    /// - Parameters:
+    ///   - request: The `HTTPRequest` whose cached entry should be removed.
+    ///   - method: The HTTP method used when the response was originally cached.
+    ///             Must match the method used during the original `send` call.
+    ///
+    /// - Throws: An error if the underlying disk cache removal fails.
+    public func clearCache(for request: HTTPRequest, method: HTTPMethod) async throws {
+        let key = request.cacheKey(for: method)
+        try await cacheStore.remove(key: key)
+    }
+
     /// Returns the cached, decoded response for a request without performing any
     /// network call.
     ///

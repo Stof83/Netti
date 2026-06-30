@@ -64,5 +64,20 @@ actor HTTPCacheStore {
         memoryCache.setObject(entry, forKey: key as NSString)
         try await diskCache.write(data, key: key)
     }
-}
 
+    /// Removes the cached entry for the given key from both memory and disk.
+    ///
+    /// If no entry exists for the key, this method returns without error.
+    ///
+    /// - Parameter key: A deterministic cache key uniquely identifying the request.
+    func remove(key: String) async throws {
+        memoryCache.removeObject(forKey: key as NSString)
+        try diskCache.remove(key: key)
+    }
+
+    /// Removes all cached entries from both memory and disk.
+    func clearAll() async throws {
+        memoryCache.removeAllObjects()
+        try diskCache.removeAll()
+    }
+}
