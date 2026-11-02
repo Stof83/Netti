@@ -66,7 +66,7 @@ Netti runs on its own `URLSession` engine, `URLSessionNetworkService`, and has n
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Stof83/Netti.git", from: "2.0.0")
+    .package(url: "https://github.com/Stof83/Netti.git", from: "3.0.0")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Netti", package: "Netti")]),
