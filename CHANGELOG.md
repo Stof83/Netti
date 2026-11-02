@@ -4,6 +4,16 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.0.0] - 2026-11-02
+
+### BREAKING CHANGES
+
+- remove AFNetworkService and the Alamofire dependency (2e24186)
+
+### Changed
+
+- remove AFNetworkService and the Alamofire dependency (2e24186)
+
 ## [2.0.0] - 2026-11-02
 
 Netti 2.0 is a major release with breaking changes. Every one of them, with before and after code, is in [MIGRATION.md](MIGRATION.md).
