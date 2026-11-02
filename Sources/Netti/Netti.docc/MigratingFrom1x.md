@@ -4,7 +4,7 @@ Move code written for Netti 1.x to the 2.0 API.
 
 ## Overview
 
-Netti 2.0 breaks source compatibility on purpose: the public API is smaller, every error is typed, and the default engine no longer uses Alamofire. This article summarizes the changes. The complete mapping, with before-and-after code for every breaking change, is in `MIGRATION.md` at the root of the repository.
+Netti 2.0 breaks source compatibility on purpose: the public API is smaller, every error is typed, and the engine no longer uses Alamofire. This article summarizes the changes. The complete mapping, with before-and-after code for every breaking change, is in `MIGRATION.md` at the root of the repository.
 
 To stay on 1.x until you are ready, keep the requirement at `.upToNextMajor(from: "1.5.0")`, which never resolves to 2.x.
 
@@ -16,7 +16,7 @@ To stay on 1.x until you are ready, keep the requirement at `.upToNextMajor(from
 4. Make endpoint types, and every query, body and response type, `Sendable`.
 5. Update every `catch` of ``HTTPRequestError`` to the new cases.
 6. Check `GET`, `HEAD` and `DELETE` queries that send dates, and query or body keys that start with an acronym.
-7. Replace `AFConfiguration` and `AFNetworkService` with ``URLSessionNetworkService`` and a ``ServerTrustPolicy``.
+7. Replace `AFConfiguration` and `AFNetworkService`, which no longer exist, with ``URLSessionNetworkService`` and a ``ServerTrustPolicy``.
 8. Read ``NetworkMonitor/status`` on the main actor, or switch to ``NetworkMonitor/currentStatus``.
 9. If you implement ``NetworkService`` yourself, rewrite it against the transport-only protocol, or use `NettiTesting` for test doubles.
 
@@ -73,7 +73,7 @@ Methods without a verb, such as `TRACE`, go through ``Netti/buildRequest(_:param
 
 - ``URLSessionNetworkService`` is the default engine. It takes a `URLSessionConfiguration` plus an optional trust policy, redirect handler, connection limit per host and response size cap. Without a redirect handler it uses ``RedirectHandler/secure``, which refuses `https` to `http` and keeps credentials and bodies on their origin; pass ``RedirectHandler/follow`` to follow every redirect unchanged, as 1.x did. Unlike Alamofire's default configuration, it does not add `Accept-Encoding`, `Accept-Language` and `User-Agent` headers; ``HTTPHeaders/default`` holds those values if your backend needs them.
 - ``NetworkService`` is transport-only: `data`, `upload`, `download`, `bytes` and `webSocket` on a built `URLRequest`.
-- ``AFNetworkService``, ``AFConfiguration`` and the 1.x parameter encoders are deprecated. Pinning moves to ``ServerTrustPolicy``; see <doc:CertificatePinning>.
+- `AFNetworkService` and `AFConfiguration` are removed, along with the Alamofire dependency. The 1.x parameter encoders are deprecated. Pinning moves to ``ServerTrustPolicy``; see <doc:CertificatePinning>.
 
 ### Caching and connectivity changed
 

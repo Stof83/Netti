@@ -7,7 +7,6 @@ import Testing
 /// The engines under the shared contract suite.
 enum EngineKind: String, CaseIterable, CustomTestStringConvertible, Sendable {
     case urlSession = "URLSession"
-    case alamofire = "Alamofire"
 
     var testDescription: String {
         rawValue
@@ -17,8 +16,6 @@ enum EngineKind: String, CaseIterable, CustomTestStringConvertible, Sendable {
         switch self {
             case .urlSession:
                 URLSessionNetworkService(configuration: .ephemeral)
-            case .alamofire:
-                AFNetworkService(configuration: .ephemeral)
         }
     }
 }

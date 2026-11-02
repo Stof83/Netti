@@ -129,8 +129,6 @@ Test support ships as a separate product, `NettiTesting`, with a stub server tha
 
 ### Deprecated
 
-- ``AFNetworkService``
-- ``AFConfiguration``
 - ``ParameterEncoder``
 - ``URLSessionConfigurationWrapper``
 - ``JSONBodyParameterEncoder``

@@ -4,8 +4,7 @@ import Testing
 
 @testable import Netti
 
-/// The engine contract. Every test runs against both engines; passing on both is the evidence of
-/// parity required before Alamofire is removed.
+/// The engine contract every ``NetworkService`` engine must satisfy.
 @Suite("Network service contract", .timeLimit(.minutes(1)))
 struct NetworkServiceContractTests {
 

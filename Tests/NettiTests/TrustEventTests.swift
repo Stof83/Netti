@@ -14,7 +14,6 @@ import NettiTesting
 ///
 /// The engines run against ``RedTeamTLSServer``, a real TLS listener on 127.0.0.1 with a
 /// self-signed `localhost` certificate, so the failure comes from an actual trust challenge. The
-/// Alamofire engine opens WebSockets through its internal `URLSessionNetworkService`.
 @Suite("Trust events", .timeLimit(.minutes(1)), .enabled(if: RedTeamTLSServer.isAvailable, "needs a loopback TLS identity"))
 struct TrustEventTests {
     typealias Fixture = TrustFixtures.Certificate
@@ -144,8 +143,6 @@ private extension TrustEventTests {
         switch engine {
             case .urlSession:
                 URLSessionNetworkService(configuration: .ephemeral, trustPolicy: policy)
-            case .alamofire:
-                AFNetworkService(configuration: .ephemeral, trustPolicy: policy)
         }
     }
 }

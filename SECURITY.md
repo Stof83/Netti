@@ -15,11 +15,11 @@ Report privately to the maintainer. Do not open a public issue or pull request f
 
 security contact: <maintainer email>
 
-Include the Netti version, the platform and OS version, the engine (`URLSessionNetworkService` or `AFNetworkService`), and a reproduction: ideally a failing test, or the request and response bytes. Strip real tokens and personal data first.
+Include the Netti version, the platform and OS version, the engine (`URLSessionNetworkService` or your own), and a reproduction: ideally a failing test, or the request and response bytes. Strip real tokens and personal data first.
 
 ## Secure defaults
 
-`Netti()` gets every row below with no configuration. Unless a row says otherwise, it applies to the default engine, `URLSessionNetworkService`; the deprecated `AFNetworkService` gets only the TLS floor (see [Accepted risks](#accepted-risks)).
+`Netti()` gets every row below with no configuration. Unless a row says otherwise, it applies to the default engine, `URLSessionNetworkService`.
 
 | Protection | Default | Opt-out |
 |---|---|---|
@@ -107,7 +107,6 @@ Netti cannot do these for you:
 | TM-chaos-1 | `URLSession` falls back to HTTP/0.9 on a malformed status line and reports a synthesized `200` whose body is the raw bytes | Engine-level behaviour Netti cannot see. Over `https`, TLS and pinning stop anyone but the server from injecting such a response |
 | TM-chaos-2 | A chunked body cut off before its last chunk is reported as complete | Engine-level: `URLSession` ends the task without an error. Enable `ResponseValidation`, and validate payloads whose completeness matters |
 | — | When a connection closes early under load, `URLSession` can drop bytes it read but did not yet deliver, so a stream receives fewer bytes than were sent | Engine-level. The stream ends or throws as usual; Netti cannot recover bytes `URLSession` never delivered |
-| TM-red-1 / TM-13 | The deprecated `AFNetworkService` gets only the TLS floor: no secure redirects (it follows `https` → `http`), no size cap, and Alamofire's `URLCache` handling | The engine is kept only for parity checks and is removed with Alamofire. Use `URLSessionNetworkService` |
 | TM-red-2 | The cache key sorts query items by name and value, so `?id=1&id=2` and `?id=2&id=1` share one entry | Repeated keys whose order changes meaning are rare. Sorting keeps keys stable for the common case |
 | TM-red-3 | The cache key ignores headers, so content-negotiated variants of one URL share an offline entry | Netti caches only endpoints that opt in. Don't opt in an endpoint whose response varies by header |
 | TM-red-4 | Cache entries carry no integrity check; a modified entry is served | Modifying it needs write access to the app's Caches directory, at which point the attacker already controls the app's data |
@@ -127,7 +126,7 @@ These belong to the OS or the server, so Netti documents them rather than reimpl
 - Certificate Transparency and revocation freshness: enforced by the OS. Netti offers opt-in `.revocation(requirePositiveResponse:)`.
 - Replay protection: server-side replay windows, nonces and timestamps. Netti ships only the opt-in `Idempotency-Key`.
 - Jailbreak and debugger detection, binary protections: an app-level concern; a networking library cannot defend a compromised process.
-- Supply chain: Alamofire stays linked until the deprecated engine is removed (TM-33).
+- Supply chain: Netti has no third-party dependencies (TM-33).
 
 ## OWASP mapping
 

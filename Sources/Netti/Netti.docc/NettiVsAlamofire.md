@@ -4,7 +4,7 @@ Compare Netti with Alamofire 5: what maps one to one, what Netti adds, and what 
 
 ## Overview
 
-Netti 2.0 covers Alamofire's request features with plain async methods on its own `URLSession` engine. Alamofire is still a package dependency, but only the deprecated ``AFNetworkService`` engine uses it. That engine exists so a shared contract test suite can prove both engines behave the same. Alamofire will be removed from the package in a later release; until then, adding Netti also fetches Alamofire.
+Netti covers Alamofire's request features with plain async methods on its own `URLSession` engine. Netti has no third-party dependencies: adding it never fetches Alamofire.
 
 ### The same request in both
 

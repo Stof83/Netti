@@ -37,31 +37,6 @@ struct TransportSecurityTests {
         #expect(service.sessionConfiguration.tlsMinimumSupportedProtocolVersion == .TLSv13)
     }
 
-    @Test("given the default configuration, when the Alamofire engine is created, then its TLS minimum is 1.2")
-    func alamofire_default_tls12() {
-        let service = AFNetworkService()
-
-        #expect(service.sessionConfiguration.tlsMinimumSupportedProtocolVersion == .TLSv12)
-    }
-
-    @Test("given a configuration requiring TLS 1.3, when the Alamofire engine is created, then TLS 1.3 is kept")
-    func alamofire_tls13_kept() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.tlsMinimumSupportedProtocolVersion = .TLSv13
-
-        let service = AFNetworkService(configuration: configuration)
-
-        #expect(service.sessionConfiguration.tlsMinimumSupportedProtocolVersion == .TLSv13)
-    }
-
-    @Test("given the deprecated 1.x configuration, when the Alamofire engine is created, then its TLS minimum is 1.2")
-    @available(*, deprecated)
-    func alamofire_legacy_tls12() {
-        let service = AFNetworkService(configuration: AFConfiguration())
-
-        #expect(service.sessionConfiguration.tlsMinimumSupportedProtocolVersion == .TLSv12)
-    }
-
     // MARK: - Resource Timeout
 
     @Test("given the default configuration, when the URLSession engine is created, then its resource timeout is left at URLSession's default")

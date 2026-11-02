@@ -4,7 +4,7 @@ Add Netti to a package, describe an endpoint, and make your first request.
 
 ## Overview
 
-Netti needs iOS 17, macOS 14, tvOS 17, watchOS 10 or Mac Catalyst 17, and a Swift 6.4 toolchain. Its only dependency is Alamofire, which only the deprecated ``AFNetworkService`` engine uses.
+Netti needs iOS 17, macOS 14, tvOS 17, watchOS 10 or Mac Catalyst 17, and a Swift 6.4 toolchain. It has no third-party dependencies.
 
 ### Add the package
 

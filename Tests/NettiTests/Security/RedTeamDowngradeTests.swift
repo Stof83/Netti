@@ -53,22 +53,6 @@ struct RedTeamDowngradeTests {
         #expect(target.requests.isEmpty)
     }
 
-    /// The deprecated Alamofire engine has no redirect handler: the transport-security spec scopes
-    /// the downgrade refusal to the URLSession engine. This records what it does.
-    @Test("given an https origin that redirects to http, when the Alamofire engine sends it, then the http target is never contacted")
-    func httpsToHttp_alamofire_probe() async throws {
-        let (origin, target) = try await Self.downgradingServers(status: 302)
-        defer { origin.stop(); target.stop() }
-        let service = AFNetworkService(configuration: .ephemeral, trustPolicy: try Self.serverPolicy())
-
-        _ = try? await service.data(for: Self.authenticated(origin.url("/start")))
-
-        withKnownIssue("TM-red-1: the deprecated AF engine follows an https→http redirect (spec scopes the refusal to the URLSession engine)") {
-            #expect(target.requests.isEmpty)
-        }
-        #expect(target.requests.first?.header("Authorization") == nil, "the bearer token crossed to the http origin")
-    }
-
     @Test(
         "given .secure, when the https source is spelled in any case and the target is plain http, then the redirect fails",
         arguments: [
@@ -100,18 +84,9 @@ struct RedTeamDowngradeTests {
 
         let negotiated = switch engine {
             case .urlSession: URLSessionNetworkService(configuration: configuration, trustPolicy: ServerTrustPolicy([:])).sessionConfiguration
-            case .alamofire: AFNetworkService(configuration: configuration, trustPolicy: ServerTrustPolicy([:])).sessionConfiguration
         }
 
         #expect(negotiated.tlsMinimumSupportedProtocolVersion.rawValue >= tls_protocol_version_t.TLSv12.rawValue)
-    }
-
-    @Test("given the deprecated 1.x Alamofire configuration, when the engine is created, then it requires TLS 1.2")
-    @available(*, deprecated)
-    func tlsFloor_legacyAlamofire() {
-        let service = AFNetworkService(configuration: AFConfiguration())
-
-        #expect(service.sessionConfiguration.tlsMinimumSupportedProtocolVersion.rawValue >= tls_protocol_version_t.TLSv12.rawValue)
     }
 
     @Test(
@@ -126,7 +101,6 @@ struct RedTeamDowngradeTests {
         let policy = try Self.serverPolicy()
         let service: any NetworkService = switch engine {
             case .urlSession: URLSessionNetworkService(configuration: configuration, trustPolicy: policy)
-            case .alamofire: AFNetworkService(configuration: configuration, trustPolicy: policy)
         }
 
         let error = await expectRequestError { () async throws(HTTPRequestError) in

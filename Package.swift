@@ -16,16 +16,8 @@ let package = Package(
         .library(name: "Netti", targets: ["Netti"]),
         .library(name: "NettiTesting", targets: ["NettiTesting"]),
     ],
-    dependencies: [
-        .package(url: "https://github.com/Alamofire/Alamofire", .upToNextMajor(from: "5.10.2")),
-    ],
     targets: [
-        .target(
-            name: "Netti",
-            dependencies: [
-                .product(name: "Alamofire", package: "Alamofire"),
-            ],
-        ),
+        .target(name: "Netti"),
         .target(
             name: "NettiTesting",
             dependencies: ["Netti"]

@@ -1,11 +1,30 @@
-# Migrating to Netti 2.0
+# Migrating to Netti 3.0
 
-Netti 2.0 breaks source compatibility on purpose. This guide covers two paths:
+Netti 2.0 and 3.0 break source compatibility on purpose. This guide covers three paths:
 
+- [Netti 2.x to 3.0](#netti-2x-to-30): the Alamofire engine and the Alamofire dependency are removed
 - [Netti 1.x to 2.0](#netti-1x-to-20): a one-to-one API mapping, then every breaking change with before and after code
 - [Alamofire to Netti](#alamofire-to-netti): concept mapping for code that calls Alamofire directly
 
 To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from: "1.5.0")`, which never resolves to 2.x.
+
+## Netti 2.x to 3.0
+
+3.0 removes `AFNetworkService`, `AFConfiguration` and the Alamofire package dependency, all deprecated since 2.0. Nothing else changes. Netti now has no third-party dependencies, so adding it no longer fetches Alamofire.
+
+If your code doesn't name `AFNetworkService` or `AFConfiguration`, just raise the requirement to `from: "3.0.0"`. Otherwise move to the native engine and a `ServerTrustPolicy`:
+
+```swift
+// 2.x
+let manager = ServerTrustManager(evaluators: ["api.example.com": PublicKeysTrustEvaluator()])
+let netti = Netti(service: AFNetworkService(configuration: AFConfiguration(serverTrustManager: manager)))
+
+// 3.0
+let pins = ServerTrustPolicy(["api.example.com": .publicKeys(["<primary SPKI SHA-256>", "<backup SPKI SHA-256>"])])
+let netti = Netti(service: URLSessionNetworkService(trustPolicy: pins))
+```
+
+If your project imports Alamofire itself, add it to your own `Package.swift`; Netti no longer brings it in.
 
 ## Netti 1.x to 2.0
 
@@ -52,8 +71,8 @@ To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from:
 | `HTTPRequestError.statusCode(Int)` | Removed; use `ResponseValidation` and `.unacceptableStatusCode(_:response:)` |
 | `protocol NetworkService: AnyObject` with `send` and `createURLRequest` | `protocol NetworkService: Sendable` with `data`, `upload`, `download`, `bytes`, `webSocket` |
 | `URLSessionNetworkService(configuration: URLSessionConfigurationWrapper)` | `URLSessionNetworkService(configuration: URLSessionConfiguration, trustPolicy:redirectHandler:maxConnectionsPerHost:maximumResponseSize:)` |
-| `AFNetworkService(configuration: AFConfiguration)` | Deprecated. Use `URLSessionNetworkService(trustPolicy:)` |
-| `AFConfiguration(serverTrustManager:)` | Deprecated. Use `ServerTrustPolicy` |
+| `AFNetworkService(configuration: AFConfiguration)` | Removed in 3.0. Use `URLSessionNetworkService(trustPolicy:)` |
+| `AFConfiguration(serverTrustManager:)` | Removed in 3.0. Use `ServerTrustPolicy` |
 | `ParameterEncoder`, `URLSessionConfigurationWrapper`, `JSONBodyParameterEncoder`, `URLQueryParameterEncoder` | Deprecated and unused. Netti encodes with `URLEncodedFormParameterEncoder` and `JSONParameterEncoder` |
 | `NetworkMonitor.Status { connected, disconnected }` | `Status { unknown, connected, disconnected }` |
 | `NetworkMonitor.status`, `isConnected`, `isDisconnected` (any thread) | `@MainActor`; use `currentStatus` off the main actor |
@@ -124,7 +143,7 @@ You can no longer subclass `Netti` or override `send`, `buildRequest` or `cached
 
 #### The default engine is `URLSessionNetworkService`
 
-`Netti()` now runs on the native engine, not on Alamofire. Behaviour is checked with one contract test suite that runs against both engines. One visible difference: `URLSessionNetworkService` uses `URLSessionConfiguration.default`, so `Accept-Encoding`, `Accept-Language` and `User-Agent` carry `URLSession`'s own values, not the ones Alamofire's default configuration sets. Alamofire's `User-Agent`, for example, names the app and the Alamofire version. If your backend depends on those values, add `HTTPHeaders.default`, which holds Netti's equivalents, to your endpoints' `headers`.
+`Netti()` now runs on the native engine, not on Alamofire. Behaviour is covered by one contract test suite. One visible difference: `URLSessionNetworkService` uses `URLSessionConfiguration.default`, so `Accept-Encoding`, `Accept-Language` and `User-Agent` carry `URLSession`'s own values, not the ones Alamofire's default configuration sets. Alamofire's `User-Agent`, for example, names the app and the Alamofire version. If your backend depends on those values, add `HTTPHeaders.default`, which holds Netti's equivalents, to your endpoints' `headers`.
 
 #### Request and response types must be `Sendable`
 
@@ -254,9 +273,9 @@ let service = URLSessionNetworkService(configuration: .default, trustPolicy: pin
 
 Every argument is optional. The 1.x engine had no trust handling and no redirect control. 2.0 adds both, plus a response size cap, and applies the [security defaults](#security-defaults-in-20) to the configuration you pass.
 
-#### Alamofire engine and configuration are deprecated
+#### Alamofire engine and configuration are removed
 
-`AFNetworkService`, `AFConfiguration` and `AFNetworkService.init(configuration: AFConfiguration)` still compile, with deprecation warnings. Of `AFConfiguration`, only `serverTrustManager` is still read; `cacheResponse`, `urlEncoding` and `jsonEncoding` are ignored. Move to the native engine and a `ServerTrustPolicy`:
+`AFNetworkService` and `AFConfiguration` were deprecated in 2.0 and are removed in 3.0. Only `AFConfiguration.serverTrustManager` was still read in 2.x; `cacheResponse`, `urlEncoding` and `jsonEncoding` were ignored. Move to the native engine and a `ServerTrustPolicy`:
 
 ```swift
 // 1.x
@@ -433,10 +452,6 @@ let token = headers["Authorization"]
 #### Caches are credential-safe
 
 `URLSessionNetworkService` never stores in `URLCache` a response to a request carrying a credential header, any name the [Redaction rules](SECURITY.md#redaction-rules) mark (`Authorization`, `Cookie`, `Proxy-Authorization`, `X-Api-Key`, …), whether set on the request or in the configuration's `httpAdditionalHeaders`. The Netti disk cache is excluded from backups and, on iOS, tvOS, watchOS and visionOS, written with `completeUntilFirstUserAuthentication` protection. The offline cache key still doesn't include the credential, so call `clearCache()` on logout.
-
-#### The deprecated Alamofire engine gets only the TLS floor
-
-`AFNetworkService` doesn't get secure redirects, the response size cap or the `URLCache` rule. Move to `URLSessionNetworkService` to get them.
 
 ## Alamofire to Netti
 

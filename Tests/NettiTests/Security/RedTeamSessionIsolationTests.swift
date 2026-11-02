@@ -34,7 +34,6 @@ struct RedTeamSessionIsolationTests {
         ])])
         let pinned: any NetworkService = switch pinnedEngine {
             case .urlSession: URLSessionNetworkService(configuration: .default, trustPolicy: pinnedPolicy)
-            case .alamofire: AFNetworkService(configuration: .default, trustPolicy: pinnedPolicy)
         }
 
         for round in 1...3 {

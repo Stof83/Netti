@@ -13,11 +13,8 @@ import Foundation
 /// after the engine runs, so every engine gets them for free. An engine only moves bytes, reports
 /// progress, collects metrics and enforces its ``ServerTrustPolicy``.
 ///
-/// Netti ships two engines:
-/// - ``URLSessionNetworkService``, the default, built on `URLSession`.
-/// - ``AFNetworkService``, deprecated, built on Alamofire and kept only to prove parity.
-///
-/// Both pass the same contract suite, so swapping one for the other never changes behavior.
+/// Netti ships one engine, ``URLSessionNetworkService``, built on `URLSession`. It is the default.
+/// Any engine you write yourself should pass the same contract suite.
 ///
 /// Contract shared by every method:
 /// - Non-2xx responses are *returned*, never thrown. Status validation is the caller's decision.

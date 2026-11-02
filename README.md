@@ -34,7 +34,7 @@ Upgrading from 1.x or coming from Alamofire? Read [MIGRATION.md](MIGRATION.md).
 
 ## Netti vs Alamofire
 
-Netti 2.0 runs on its own `URLSession` engine, `URLSessionNetworkService`, which is the default. Alamofire is still a package dependency, but only the deprecated `AFNetworkService` engine uses it. That engine is kept to check parity, and it will be removed together with the dependency in a later release.
+Netti runs on its own `URLSession` engine, `URLSessionNetworkService`, and has no third-party dependencies. Adding Netti never fetches Alamofire.
 
 | | Netti 2.0 | Alamofire 5 |
 |---|---|---|
