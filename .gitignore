@@ -1,5 +1,6 @@
 # Ignore Swift Package Manager build artifacts directory.
 .build/
+.build-*/
 .*-build/
 # Ignore generated Xcode projects
 *.xcodeproj
@@ -44,6 +45,7 @@ DerivedData/
 .claude/
 CLAUDE.md
 config-version.json
+openspec/
 
 # =========================
 # Local Audits & Graph Analysis
