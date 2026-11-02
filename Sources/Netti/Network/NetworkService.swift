@@ -7,63 +7,86 @@
 
 import Foundation
 
-/// A protocol that defines the required operations for performing network requests.
+/// A transport engine: it executes fully built `URLRequest`s and nothing else.
 ///
-/// This protocol provides the foundation for interacting with an underlying network service,
-/// such as Alamofire, to send, upload, and download data. Each method can be customized for specific
-/// use cases, like sending a standard GET request, uploading data, or downloading raw files.
+/// Encoding, adapting, validation, retry, caching and decoding all happen in ``Netti`` before and
+/// after the engine runs, so every engine gets them for free. An engine only moves bytes, reports
+/// progress, collects metrics and enforces its ``ServerTrustPolicy``.
 ///
-/// Implementers of this protocol should provide network functionality using appropriate HTTP methods
-/// and encoding strategies.
-public protocol NetworkService: AnyObject {
-    /// Sends a network request with optional parameters and returns the raw response data.
+/// Netti ships two engines:
+/// - ``URLSessionNetworkService``, the default, built on `URLSession`.
+/// - ``AFNetworkService``, deprecated, built on Alamofire and kept only to prove parity.
+///
+/// Both pass the same contract suite, so swapping one for the other never changes behavior.
+///
+/// Contract shared by every method:
+/// - Non-2xx responses are *returned*, never thrown. Status validation is the caller's decision.
+/// - Failures throw ``HTTPRequestError``: ``HTTPRequestError/requestFailed(_:)`` for transport
+///   errors, ``HTTPRequestError/serverTrustEvaluationFailed(host:reason:)`` when the trust policy
+///   rejects the host, ``HTTPRequestError/cancelled`` when the calling task is cancelled.
+/// - Cancelling the calling task cancels the underlying transfer.
+/// - Progress handlers are called on a background queue, in order, with increasing values, and
+///   at least once with a fraction of `1.0` when the transfer succeeds.
+///
+/// ```swift
+/// let service = URLSessionNetworkService()
+/// let response = try await service.data(for: URLRequest(url: url))
+/// ```
+public protocol NetworkService: Sendable {
+    /// Sends `request` and returns the whole response body.
     ///
-    /// This method is used to perform standard HTTP requests with optional parameters (e.g., query parameters,
-    /// body data), and returns the raw response data as a `Data` type.
-    ///
-    /// - Parameters:
-    ///   - request: The HTTP request configuration containing details like the URL and headers.
-    ///   - parameters: An instance of a struct that conforms to `Encodable` and `Sendable`, to include in the request body or query.
-    ///   - method: The HTTP method to use (e.g., GET, POST, PUT, etc.).
-    /// - Returns: A `Data` object containing the raw response data.
-    /// - Throws: An `HTTPError` if the request fails, or if encoding or decoding fails.
-    ///
-    /// Example:
-    /// ```swift
-    /// struct MyRequestParams: Encodable {
-    ///     let key: String
-    /// }
-    /// let response = try await networkService.send(request, parameters: MyRequestParams(key: "value"), method: .get)
-    /// ```
-    func send(
-        _ request: HTTPRequest,
-        parameters: [String: any Any & Sendable]?,
-        method: HTTPMethod,
-    ) async throws -> HTTPResponse<Data>
+    /// - Parameter request: The request to send.
+    /// - Returns: The response; `rawData` and `data` hold the body, empty when there is none.
+    /// - Throws: ``HTTPRequestError`` when no response is received.
+    func data(for request: URLRequest) async throws(HTTPRequestError) -> HTTPResponse<Data>
 
-    /// Sends a raw `URLRequest` and returns the raw response data.
-    ///
-    /// This method bypasses the internal request construction logic and executes a fully configured `URLRequest` directly.
-    /// It is particularly useful for processing requests retrieved from an offline queue or constructed externally.
-    ///
-    /// - Parameter request: The native `URLRequest` to execute.
-    /// - Returns: A `HTTPResponse` object containing the raw `Data` and metadata.
-    /// - Throws: An `HTTPError` if the network transport fails.
-    func send(_ request: URLRequest) async throws -> HTTPResponse<Data>
-    
-    /// Creates a `URLRequest` without sending it.
-    ///
-    /// This method is essential for offline caching and background queueing, allowing
-    /// the creation of a fully configured request that can be stored and executed later.
+    /// Uploads `source` as the body of `request` and returns the server's response.
     ///
     /// - Parameters:
-    ///   - request: The HTTP request configuration.
-    ///   - parameters: Optional dictionary of parameters to encode.
-    ///   - method: The HTTP method to use.
-    /// - Returns: A fully configured `URLRequest`.
-    func createURLRequest(
-        _ request: HTTPRequest,
-        parameters: [String: any Any & Sendable]?,
-        method: HTTPMethod
-    ) throws -> URLRequest
+    ///   - request: The request to send. Its `httpBody` is ignored.
+    ///   - source: The body: in-memory data, a file, or a stream.
+    ///   - progress: Called as the body is sent. Optional.
+    /// - Returns: The response, as for ``data(for:)``.
+    /// - Throws: ``HTTPRequestError/fileSystem(_:)`` before any network traffic when a file
+    ///   source cannot be read; otherwise as for ``data(for:)``.
+    func upload(
+        for request: URLRequest,
+        from source: UploadSource,
+        progress: ProgressHandler?
+    ) async throws(HTTPRequestError) -> HTTPResponse<Data>
+
+    /// Downloads the response body of `request` to a temporary file.
+    ///
+    /// The download never throws: a failure is reported in the returned response's `error`, next
+    /// to the `resumeData` that continues it when the server supports resumption. This keeps the
+    /// resume data of a cancelled or failed transfer available to the caller.
+    ///
+    /// - Parameters:
+    ///   - request: The request to send. Ignored when `resumeData` is given.
+    ///   - resumeData: Data from a previous ``HTTPDownloadResponse/resumeData`` to continue from.
+    ///   - progress: Called as the body is received. Optional.
+    /// - Returns: On success, a response whose `fileURL` is a new file in the temporary directory
+    ///   that the caller moves or deletes. On failure, `fileURL` is `nil` and `error` holds the
+    ///   ``HTTPRequestError``.
+    func download(
+        for request: URLRequest,
+        resumeData: Data?,
+        progress: ProgressHandler?
+    ) async -> HTTPDownloadResponse<URL>
+
+    /// Sends `request` and returns as soon as the response headers arrive, streaming the body.
+    ///
+    /// - Parameter request: The request to send.
+    /// - Returns: The response, whose ``HTTPStreamResponse/body`` yields chunks as they arrive.
+    ///   Ending the iteration early cancels the transfer.
+    /// - Throws: ``HTTPRequestError`` when no response headers are received.
+    func bytes(for request: URLRequest) async throws(HTTPRequestError) -> HTTPStreamResponse
+
+    /// Opens a WebSocket connection, returning once the handshake succeeds.
+    ///
+    /// - Parameter request: The `ws` or `wss` request, with any headers to send in the handshake.
+    /// - Returns: The open connection.
+    /// - Throws: ``HTTPRequestError`` when the handshake fails, including
+    ///   ``HTTPRequestError/serverTrustEvaluationFailed(host:reason:)`` when pinning rejects the host.
+    func webSocket(for request: URLRequest) async throws(HTTPRequestError) -> any WebSocketTransport
 }

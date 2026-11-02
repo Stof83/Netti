@@ -7,77 +7,96 @@
 
 import Foundation
 
-/// A thread-safe cache store responsible for persisting HTTP responses for offline usage.
+/// A thread-safe cache of HTTP response data for offline use.
 ///
-/// This cache store is designed as an *offline fallback mechanism*, not a freshness cache.
-/// Cached data is **never consulted while the device is online** and is only read when
-/// the network layer determines that connectivity is unavailable.
-///
-/// The cache persists data to disk to ensure availability across app launches and
-/// optionally mirrors data in memory as an internal optimization.
+/// Entries persist on disk across launches and are mirrored in memory. Every call is serialized by
+/// the actor, so a write is visible to the next read as soon as `write` returns.
 actor HTTPCacheStore {
 
-    /// An in-memory cache used as a fast-access mirror for disk-backed entries.
-    ///
-    /// This cache is opportunistic and may be evicted at any time by the system.
+    // MARK: - Properties
+
+    /// An opportunistic in-memory mirror of disk entries; the system may evict it at any time.
     private let memoryCache = NSCache<NSString, CacheEntry>()
 
-    /// A disk-backed cache used to persist responses across app launches.
+    /// The disk-backed cache that persists entries across launches.
     private let diskCache: DiskCache
 
-    /// Creates a new cache store with the provided disk cache.
+    private let now: @Sendable () -> Date
+
+    // MARK: - Initialization
+
+    /// Creates a cache store.
     ///
-    /// - Parameter diskCache: The disk-backed cache used to persist responses.
-    init(diskCache: DiskCache) {
+    /// - Parameters:
+    ///   - diskCache: The disk-backed cache.
+    ///   - now: The clock used to date entries and check their age; injected by tests.
+    init(diskCache: DiskCache, now: @escaping @Sendable () -> Date = { Date() }) {
         self.diskCache = diskCache
+        self.now = now
     }
 
-    /// Reads cached data for the given key if the request opted into caching.
-    ///
-    /// This method must only be called when the device is offline.
-    /// If the request’s cache policy is `.none`, no cached data is returned.
+    // MARK: - Entries
+
+    /// Reads the data cached for `key`.
     ///
     /// - Parameters:
-    ///   - key: A deterministic cache key uniquely identifying the request.
-    ///
-    /// - Returns: Cached response data if available; otherwise `nil`.
-    func read(key: String) async throws -> Data? {
-        if let data = memoryCache.object(forKey: key as NSString)?.data {
-            return data
-        } else if let data = try await diskCache.read(Data.self, key: key) {
-            return data
+    ///   - key: The cache key.
+    ///   - maxAge: How old the entry may be; `nil` accepts any age.
+    /// - Returns: The cached data, or `nil` when there is no entry or it is older than `maxAge`.
+    func read(key: String, maxAge: Duration? = nil) -> Data? {
+        let entry: CacheEntry
+        if let memoryEntry = memoryCache.object(forKey: key as NSString) {
+            diskCache.touch(key: key)
+            entry = memoryEntry
+        } else if let diskEntry = diskCache.read(key: key) {
+            memoryCache.setObject(diskEntry, forKey: key as NSString)
+            entry = diskEntry
+        } else {
+            return nil
         }
-        
-        return nil
+
+        if let maxAge, now().timeIntervalSince(entry.timestamp) > maxAge.timeInterval {
+            return nil
+        }
+        return entry.data
     }
 
-    /// Writes response data to the cache if the request opted into caching.
-    ///
-    /// This method is typically called after a successful network request
-    /// while the device is online.
+    /// Caches `data` for `key`, evicting least recently used entries past the size limit.
     ///
     /// - Parameters:
-    ///   - data: The raw response data to cache.
-    ///   - key: A deterministic cache key uniquely identifying the request.
-    func write(_ data: Data, key: String) async throws {
-        let entry = CacheEntry(data)
+    ///   - data: The raw response data.
+    ///   - key: The cache key.
+    /// - Throws: The file system error when the entry cannot be written.
+    func write(_ data: Data, key: String) throws {
+        let entry = CacheEntry(data, timestamp: now())
+        let evicted = try diskCache.write(entry, key: key)
         memoryCache.setObject(entry, forKey: key as NSString)
-        try await diskCache.write(data, key: key)
+        for evictedKey in evicted {
+            memoryCache.removeObject(forKey: evictedKey as NSString)
+        }
     }
 
-    /// Removes the cached entry for the given key from both memory and disk.
+    /// Removes the entry for `key`; does nothing when there is none.
     ///
-    /// If no entry exists for the key, this method returns without error.
-    ///
-    /// - Parameter key: A deterministic cache key uniquely identifying the request.
-    func remove(key: String) async throws {
+    /// - Throws: The file system error when the entry cannot be removed.
+    func remove(key: String) throws {
         memoryCache.removeObject(forKey: key as NSString)
         try diskCache.remove(key: key)
     }
 
-    /// Removes all cached entries from both memory and disk.
-    func clearAll() async throws {
+    /// Removes every entry.
+    ///
+    /// - Throws: The file system error when an entry cannot be removed.
+    func clearAll() throws {
         memoryCache.removeAllObjects()
         try diskCache.removeAll()
+    }
+}
+
+extension Duration {
+    /// The duration in seconds.
+    var timeInterval: TimeInterval {
+        let (seconds, attoseconds) = components
+        return TimeInterval(seconds) + TimeInterval(attoseconds) / 1e18
     }
 }

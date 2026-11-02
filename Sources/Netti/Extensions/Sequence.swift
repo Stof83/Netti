@@ -7,7 +7,7 @@
 import Foundation
 
 extension Sequence {
-    public func asyncMap<T>(
+    func asyncMap<T>(
         _ transform: (Element) async throws -> T
     ) async rethrows -> [T] {
         var values = [T]()
@@ -21,7 +21,7 @@ extension Sequence {
 }
 
 extension Sequence {
-    public func asyncForEach(
+    func asyncForEach(
         _ operation: (Element) async throws -> Void
     ) async rethrows {
         for element in self {
@@ -29,19 +29,3 @@ extension Sequence {
         }
     }
 }
-
-/*
-extension Sequence {
-    public func concurrentForEach(
-        _ operation: @Sendable @escaping (Element) async -> Void
-    ) async {
-        await withTaskGroup { group in
-            for element in self {
-                group.addTask {
-                    await operation(element)
-                }
-            }
-        }
-    }
-}
-*/

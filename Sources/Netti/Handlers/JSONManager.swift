@@ -8,21 +8,33 @@
 import Foundation
 
 /// An enumeration representing the key encoding and decoding strategies for JSON.
-public enum KeyEncodingDecodingStrategy {
+public enum KeyEncodingDecodingStrategy: Sendable {
+    /// Maps `camelCase` properties to `snake_case` keys when encoding, and back when decoding.
     case convertSnakeCase
+    /// Uses the property names as keys, unchanged.
     case useDefaultKeys
 
     /// Converts the `KeyEncodingDecodingStrategy` to a `JSONEncoder.KeyEncodingStrategy`.
+    ///
+    /// `.convertSnakeCase` keeps acronyms together, the same conversion query keys use: `URLValue`
+    /// becomes `url_value` and `ID` becomes `id`, where `JSONEncoder`'s own `.convertToSnakeCase`
+    /// writes `u_rl_value` and `i_d`.
+    ///
+    /// - Returns: A `.custom` snake_case strategy, or `.useDefaultKeys`.
     public func toEncoderStrategy() -> JSONEncoder.KeyEncodingStrategy {
         switch self {
             case .convertSnakeCase:
-                return .convertToSnakeCase
+                return .custom { codingPath in
+                    FormCodingKey(stringValue: codingPath.last?.stringValue.snakeCased ?? "")
+                }
             case .useDefaultKeys:
                 return .useDefaultKeys
         }
     }
     
     /// Converts the `KeyEncodingDecodingStrategy` to a `JSONDecoder.KeyDecodingStrategy`.
+    ///
+    /// - Returns: `.convertFromSnakeCase` or `.useDefaultKeys`.
     public func toDecoderStrategy() -> JSONDecoder.KeyDecodingStrategy {
         switch self {
             case .convertSnakeCase:
@@ -34,10 +46,20 @@ public enum KeyEncodingDecodingStrategy {
 }
 
 /// A class that provides a unified interface for JSON encoding and decoding.
-public class JSONManager {
+///
+/// ``Netti`` uses one to encode JSON bodies and decode every response. By default keys are
+/// converted to and from `snake_case`:
+///
+/// ```swift
+/// let netti = Netti()
+/// netti.jsonManager = JSONManager(keyStrategy: .useDefaultKeys)
+/// ```
+public final class JSONManager: Sendable {
 
     // MARK: Public Properties
+    /// The encoder for request bodies and WebSocket messages.
     public let encoder: JSONEncoder
+    /// The decoder for response bodies and WebSocket messages.
     public let decoder: JSONDecoder
     
     /// Initializes a `JSONManager` with custom date and key strategies for both encoding and decoding.
@@ -78,7 +100,7 @@ public class JSONManager {
     /// Encodes a Swift object to JSON data.
     ///
     /// - Parameter value: The value to encode.
-    /// - Throws: An error if the encoding fails.
+    /// - Throws: `EncodingError` if the encoding fails.
     /// - Returns: The encoded JSON data.
     public func encode<T: Encodable>(_ value: T) throws -> Data {
         try encoder.encode(value)
@@ -86,11 +108,16 @@ public class JSONManager {
     
     /// Decodes JSON data to a Swift object.
     ///
+    /// When `T` conforms to ``EmptyResponse`` the body is ignored and `T.emptyValue()` is returned.
+    ///
     /// - Parameter type: The type of the value to decode.
     /// - Parameter data: The JSON data to decode.
-    /// - Throws: An error if the decoding fails.
+    /// - Throws: `DecodingError` if the decoding fails.
     /// - Returns: The decoded value.
     public func decode<T: Decodable>(_ type: T.Type, from data: Data?) throws -> T {
-        try decoder.decode(T.self, from: data ?? Data())
+        if let emptyType = T.self as? any EmptyResponse.Type, let emptyValue = emptyType.emptyValue() as? T {
+            return emptyValue
+        }
+        return try decoder.decode(T.self, from: data ?? Data())
     }
 }

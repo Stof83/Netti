@@ -8,6 +8,10 @@
 import Foundation
 
 /// A protocol that defines a method for encoding parameters into a `URLRequest`.
+///
+/// - Important: Deprecated since 2.0. Engines no longer encode parameters: ``Netti`` encodes
+///   queries with ``URLEncodedFormParameterEncoder`` and bodies with ``JSONParameterEncoder``.
+@available(*, deprecated, message: "Engines no longer encode parameters; Netti encodes with URLEncodedFormParameterEncoder and JSONParameterEncoder.")
 public protocol ParameterEncoder {
     /// Encodes the given parameters into the provided `URLRequest`.
     ///
@@ -19,6 +23,11 @@ public protocol ParameterEncoder {
 }
 
 /// A configuration struct for selecting parameter encoding strategies for `URLSession` requests.
+///
+/// - Important: Deprecated since 2.0. Engines no longer encode parameters: ``Netti`` encodes
+///   queries with ``URLEncodedFormParameterEncoder`` and bodies with ``JSONParameterEncoder``.
+///   Configure the engine with ``URLSessionNetworkService/init(configuration:trustPolicy:redirectHandler:maxConnectionsPerHost:maximumResponseSize:maximumRequestDuration:)``.
+@available(*, deprecated, message: "Engines no longer encode parameters; Netti encodes with URLEncodedFormParameterEncoder and JSONParameterEncoder.")
 public struct URLSessionConfigurationWrapper {
     /// The encoder used for encoding URL query parameters (typically for GET requests).
     public let urlEncoding: ParameterEncoder
@@ -26,7 +35,7 @@ public struct URLSessionConfigurationWrapper {
     /// The encoder used for encoding JSON body parameters (typically for POST, PUT, etc.).
     public let jsonEncoding: ParameterEncoder
 
-    /// Initializes a new `URLSessionConfiguration` with optional custom encoders.
+    /// Initializes a new `URLSessionConfigurationWrapper` with optional custom encoders.
     ///
     /// - Parameters:
     ///   - urlEncoding: The encoder to use for URL query parameters. Defaults to `URLQueryParameterEncoder`.
@@ -41,6 +50,10 @@ public struct URLSessionConfigurationWrapper {
 }
 
 /// An encoder that serializes parameters into the HTTP body as JSON.
+///
+/// - Important: Deprecated since 2.0. Use ``JSONParameterEncoder``, which encodes any `Encodable`
+///   value, or simply pass `body:` to a ``Netti`` verb.
+@available(*, deprecated, message: "Engines no longer encode parameters; Netti encodes with URLEncodedFormParameterEncoder and JSONParameterEncoder.")
 public struct JSONBodyParameterEncoder: ParameterEncoder {
     /// Creates a new instance of `JSONBodyParameterEncoder`.
     public init() {}
@@ -51,7 +64,7 @@ public struct JSONBodyParameterEncoder: ParameterEncoder {
     ///   - request: The request to modify. The method adds a JSON-encoded body and sets the
     ///     `Content-Type` header to `application/json`.
     ///   - parameters: The parameters to encode. Keys are strings, and values must conform to `Any` and `Sendable`.
-    /// - Throws: An error if the parameters cannot be converted to JSON.
+    /// - Throws: An `NSError` from `JSONSerialization` if the parameters cannot be converted to JSON.
     public func encode(_ request: inout URLRequest, with parameters: [String: any Any & Sendable]?) throws {
         guard let parameters else { return }
         
@@ -63,6 +76,10 @@ public struct JSONBodyParameterEncoder: ParameterEncoder {
 }
 
 /// An encoder that serializes parameters into the URL query string.
+///
+/// - Important: Deprecated since 2.0. Use ``URLEncodedFormParameterEncoder``, which encodes any
+///   `Encodable` value, or simply pass `query:` to a ``Netti`` verb.
+@available(*, deprecated, message: "Engines no longer encode parameters; Netti encodes with URLEncodedFormParameterEncoder and JSONParameterEncoder.")
 public struct URLQueryParameterEncoder: ParameterEncoder {
     /// Creates a new instance of `URLQueryParameterEncoder`.
     public init() {}

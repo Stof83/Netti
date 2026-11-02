@@ -7,10 +7,13 @@
 
 import Foundation
 
+/// Converts encodable values into JSON objects.
 extension JSONEncoder {
     /// Converts the Encodable object into a dictionary using this JSONEncoder instance.
+    ///
     /// - Parameter value: The `Encodable` object to convert.
-    /// - Returns: A dictionary representation of the object, or nil if encoding fails.
+    /// - Returns: A dictionary representation of the object, or `nil` if encoding fails or the value
+    ///   does not encode as a JSON object.
     public func toDictionary<T: Encodable>(_ value: T) -> [String: any Any & Sendable]? {
         do {
             let data = try self.encode(value)

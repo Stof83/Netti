@@ -14,7 +14,7 @@ extension Encodable {
     ///   - dateFormat: A custom date format for encoding dates. Default is ISO 8601 format.
     ///   - keyEncodingStrategy: The key encoding strategy for encoding keys. Default is `convertToSnakeCase`.
     /// - Returns: A dictionary representation of the object, or nil if encoding fails.
-    public func toDictionary(
+    func toDictionary(
         dateFormat: String = "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
         keyEncodingStrategy: JSONEncoder.KeyEncodingStrategy = .convertToSnakeCase
     ) -> [String: Any]? {

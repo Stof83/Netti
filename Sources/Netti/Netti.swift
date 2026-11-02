@@ -7,271 +7,388 @@
 import Foundation
 import os
 
-/// A high-level wrapper around a `NetworkService` for making API requests and decoding responses.
+/// A networking client: one method per HTTP verb, plus uploads, downloads, streams and WebSockets.
 ///
-/// `Netti` provides an abstraction over raw network logic, allowing for structured parameter encoding,
-/// flexible decoding, sample data mocking, and full testability. It supports injecting custom
-/// services and JSON coders, making it ideal for use in modular architecture or large-scale apps.
-open class Netti: @unchecked Sendable {
-    private let service: NetworkService
-    private let jsonManager: JSONManager
-    private let cacheStore: HTTPCacheStore
-    private let networkMonitor = NetworkMonitor.shared
-    
-    private let logger = Logger(subsystem: "Netti", category: "network")
-    
-    /// Initializes a new `Netti` instance.
+/// Every common case is one line with no configuration:
+///
+/// ```swift
+/// let netti = Netti()
+/// let user: User? = try await netti.get(UserAPI.user(id)).data
+/// try await netti.delete(UserAPI.user(id))
+/// ```
+///
+/// Everything else is opt-in through properties you set at any time: interceptors, a retry policy,
+/// response validation, event monitors, logging, connectivity and the JSON coder.
+///
+/// ```swift
+/// let netti = Netti(service: URLSessionNetworkService(trustPolicy: pinning))
+/// netti.interceptors = [AuthenticationInterceptor(bearerToken: token) { _ in try await refresh() }]
+/// netti.retryPolicy = RetryPolicy()
+/// netti.validation = ResponseValidation()
+/// ```
+///
+/// Each request reads the configuration once, when it starts, so a change applies to the next
+/// request and never to one in flight. Every request runs through one pipeline — encode, adapt,
+/// send, validate, retry, cache, decode — so every feature works the same for every kind of
+/// request and on every ``NetworkService``.
+public final class Netti: Sendable {
+
+    // MARK: - Types
+
+    /// The configuration one request reads when it starts and keeps until it ends.
+    struct Snapshot: Sendable {
+        let jsonManager: JSONManager
+        let connectivity: any ConnectivitySource
+        let logger: NetworkLogger?
+        let pipeline: RequestPipeline
+    }
+
+    private struct Configuration: Sendable {
+        var jsonManager: JSONManager
+        var interceptors: [any RequestInterceptor]
+        var retryPolicy: RetryPolicy?
+        var validation: ResponseValidation?
+        var monitors: [any EventMonitor]
+        var isLoggingEnabled: Bool
+        var connectivity: any ConnectivitySource
+    }
+
+    // MARK: - Constants
+
+    /// The logger a new client starts with: a system ``NetworkLogger`` in DEBUG builds, none in
+    /// release builds, so request details never reach a shipped app's log unless asked for.
+    private static var defaultLogger: NetworkLogger? {
+        #if DEBUG
+        NetworkLogger()
+        #else
+        nil
+        #endif
+    }
+
+    // MARK: - Properties
+
+    let cacheStore: HTTPCacheStore
+    let deduplicator: RequestDeduplicator?
+    private let service: any NetworkService
+    private let logger: NetworkLogger
+    private let sleep: RequestPipeline.Sleep
+    private let configuration: OSAllocatedUnfairLock<Configuration>
+
+    /// Encodes bodies and query keys, and decodes responses. Converts keys to and from `snake_case`
+    /// by default.
+    public var jsonManager: JSONManager {
+        get { configuration.withLock { $0.jsonManager } }
+        set { configuration.withLock { $0.jsonManager = newValue } }
+    }
+
+    /// Adapt every request and decide retries, in order. None by default.
+    public var interceptors: [any RequestInterceptor] {
+        get { configuration.withLock { $0.interceptors } }
+        set { configuration.withLock { $0.interceptors = newValue } }
+    }
+
+    /// Retries transient failures. `nil`, the default, never retries; an endpoint's
+    /// ``HTTPRequest/retryPolicy`` overrides it.
+    public var retryPolicy: RetryPolicy? {
+        get { configuration.withLock { $0.retryPolicy } }
+        set { configuration.withLock { $0.retryPolicy = newValue } }
+    }
+
+    /// Rejects unacceptable responses. `nil`, the default, returns every response; an endpoint's
+    /// ``HTTPRequest/validation`` overrides it.
+    public var validation: ResponseValidation? {
+        get { configuration.withLock { $0.validation } }
+        set { configuration.withLock { $0.validation = newValue } }
+    }
+
+    /// Observe every request, in order, after the built-in logger. None by default.
+    public var monitors: [any EventMonitor] {
+        get { configuration.withLock { $0.monitors } }
+        set { configuration.withLock { $0.monitors = newValue } }
+    }
+
+    /// Whether the built-in ``NetworkLogger`` logs requests and responses. `true` by default in
+    /// DEBUG builds and `false` in release builds; set it to change that.
+    public var isLoggingEnabled: Bool {
+        get { configuration.withLock { $0.isLoggingEnabled } }
+        set { configuration.withLock { $0.isLoggingEnabled = newValue } }
+    }
+
+    /// Decides when cached responses stand in for the network. ``NetworkMonitor/shared`` by default.
+    public var connectivity: any ConnectivitySource {
+        get { configuration.withLock { $0.connectivity } }
+        set { configuration.withLock { $0.connectivity = newValue } }
+    }
+
+    /// The configuration as it is now, with the pipeline built from it; read it once per request.
+    var snapshot: Snapshot {
+        let configuration = configuration.withLock { $0 }
+        let logger = configuration.isLoggingEnabled ? logger : nil
+        let pipeline = RequestPipeline(
+            service: service,
+            interceptors: configuration.interceptors,
+            retryPolicy: configuration.retryPolicy,
+            validation: configuration.validation,
+            monitors: (logger.map { [$0] } ?? []) + configuration.monitors,
+            deduplicator: deduplicator,
+            sleep: sleep
+        )
+        return Snapshot(
+            jsonManager: configuration.jsonManager,
+            connectivity: configuration.connectivity,
+            logger: logger,
+            pipeline: pipeline
+        )
+    }
+
+    // MARK: - Initialization
+
+    /// Creates a client.
+    ///
+    /// Every argument has a default, so `Netti()` is a working client. Everything else is a
+    /// property you set after creating it:
+    ///
+    /// ```swift
+    /// let netti = Netti(service: URLSessionNetworkService(trustPolicy: pinning))
+    /// netti.retryPolicy = RetryPolicy()
+    /// ```
     ///
     /// - Parameters:
-    ///   - service: A `NetworkService` instance responsible for executing low-level HTTP requests.
-    ///   - jsonManager: An optional `JSONManager` used for encoding parameters and decoding responses.
+    ///   - service: The transport engine. Defaults to a new ``URLSessionNetworkService``.
+    ///   - deduplicatesRequests: Whether concurrent identical `GET` and `HEAD` requests share one transfer. `true` by default.
+    ///   - cacheSizeLimit: The most bytes the response cache keeps on disk. 50 MB by default.
+    public convenience init(
+        service: any NetworkService = URLSessionNetworkService(),
+        deduplicatesRequests: Bool = true,
+        cacheSizeLimit: Int = 50 * 1024 * 1024
+    ) {
+        self.init(
+            service: service,
+            jsonManager: .init(),
+            interceptors: [],
+            retryPolicy: nil,
+            validation: nil,
+            monitors: [],
+            logger: Self.defaultLogger,
+            connectivity: NetworkMonitor.shared,
+            deduplicatesRequests: deduplicatesRequests,
+            cacheStore: HTTPCacheStore(diskCache: DiskCache(sizeLimit: cacheSizeLimit)),
+            sleep: { try await Task.sleep(for: $0) }
+        )
+    }
+
+    /// Creates a client for `NettiTesting`: an isolated cache directory, an injectable retry sleep
+    /// and logging off.
+    package convenience init(
+        service: any NetworkService,
+        jsonManager: JSONManager,
+        interceptors: [any RequestInterceptor],
+        retryPolicy: RetryPolicy?,
+        validation: ResponseValidation?,
+        monitors: [any EventMonitor],
+        connectivity: any ConnectivitySource,
+        deduplicatesRequests: Bool,
+        cacheDirectory: URL,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) {
+        self.init(
+            service: service,
+            jsonManager: jsonManager,
+            interceptors: interceptors,
+            retryPolicy: retryPolicy,
+            validation: validation,
+            monitors: monitors,
+            logger: nil,
+            connectivity: connectivity,
+            deduplicatesRequests: deduplicatesRequests,
+            cacheStore: HTTPCacheStore(diskCache: DiskCache(directoryURL: cacheDirectory, sizeLimit: DiskCache.defaultSizeLimit, now: { Date() })),
+            sleep: sleep
+        )
+    }
+
+    /// Creates a client with every dependency injected; tests use it for the cache and the retry clock.
     ///
-    public init(
-        service: NetworkService = AFNetworkService(),
-        jsonManager: JSONManager = .init()
+    /// A `nil` logger turns logging off; turning it back on uses a system ``NetworkLogger``.
+    init(
+        service: any NetworkService,
+        jsonManager: JSONManager,
+        interceptors: [any RequestInterceptor],
+        retryPolicy: RetryPolicy?,
+        validation: ResponseValidation?,
+        monitors: [any EventMonitor],
+        logger: NetworkLogger?,
+        connectivity: any ConnectivitySource,
+        deduplicatesRequests: Bool,
+        cacheStore: HTTPCacheStore,
+        sleep: @escaping RequestPipeline.Sleep
     ) {
         self.service = service
-        self.jsonManager = jsonManager
-        self.cacheStore = .init(diskCache: DiskCache())
+        self.deduplicator = deduplicatesRequests ? RequestDeduplicator() : nil
+        self.cacheStore = cacheStore
+        self.logger = logger ?? NetworkLogger()
+        self.sleep = sleep
+        self.configuration = OSAllocatedUnfairLock(initialState: Configuration(
+            jsonManager: jsonManager,
+            interceptors: interceptors,
+            retryPolicy: retryPolicy,
+            validation: validation,
+            monitors: monitors,
+            isLoggingEnabled: logger != nil,
+            connectivity: connectivity
+        ))
     }
-    
-    /// Sends a network request with optional parameters and returns a decoded typed response.
+
+    // MARK: - Raw Requests
+
+    /// Sends a prebuilt request through the pipeline: interceptors, retry, validation, monitoring
+    /// and decoding apply; caching and sample data do not.
     ///
-    /// This method is generic over both the request's parameter type and the expected response type.
-    /// If the request defines `sampleData`, it will be used instead of making a real network call.
+    /// ```swift
+    /// let user: User? = try await netti.send(URLRequest(url: url)).data
+    /// ```
     ///
-    /// - Parameters:
-    ///   - request: The `HTTPRequest` representing the endpoint and configuration.
-    ///   - parameters: Optional request body parameters conforming to `Encodable`.
-    ///   - method: The HTTP method to use, such as `.get` or `.post`.
-    ///
-    /// - Returns: A `HTTPResponse<Response>` object containing the decoded response, metadata,
-    ///            and the original request/response.
-    ///
-    /// - Throws: `NetworkError.decoding` if decoding fails, `NetworkError.transport` for other issues.
-    open func send<Parameters: Encodable & Sendable, Response: Decodable>(
-        _ request: HTTPRequest,
-        parameters: Parameters? = Empty?.none,
-        method: HTTPMethod
-    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        do {
-            let urlRequest = try? request.asURLRequest(for: method)
-            
-            if let sampleData = request.sampleData {
-                return try await decode(sampleData, request: urlRequest)
-            }
-           
-            let cacheKey = request.cacheKey(for: method)
-           
-            if networkMonitor.isDisconnected {
-                if request.cachePolicy == .cache, let cachedData = try await cacheStore.read(key: cacheKey) {
-                    return try await decode(cachedData, request: urlRequest)
-                }
-            }
-           
-            let encodedParameters = jsonManager.encoder.toDictionary(parameters)
-            let response: HTTPResponse<Data> = try await service.send(request, parameters: encodedParameters, method: method)
-           
-            NetworkLogger.shared.log(response)
-           
-            guard let data = response.data else {
-                return HTTPResponse<Response>(
-                    request: response.request,
-                    response: response.response,
-                    data: nil,
-                    rawData: nil,
-                    error: response.error
-                )
-            }
-           
-            if request.cachePolicy == .cache {
-                Task.detached(priority: .background) {
-                    try? await self.cacheStore.write(data, key: cacheKey)
-                }
-            }
-           
-            do {
-                let decodedData = try jsonManager.decode(Response.self, from: data)
-              
-                return HTTPResponse<Response>(
-                    request: response.request,
-                    response: response.response,
-                    data: decodedData,
-                    rawData: response.rawData,
-                    error: response.error
-                )
-            } catch let error as DecodingError {
-                NetworkLogger.shared.log(error, type: Response.self, data: data)
-                throw HTTPRequestError.decodingFailed(error)
-            }
-        } catch {
-            throw .requestFailed(error)
-        }
-    }
-    
-    /// Sends a raw URLRequest and returns a decoded response.
-    /// Note: This bypasses Netti's internal Caching and SampleData logic typically tied to HTTPRequest objects.
-    ///
-    /// - Parameters:
-    ///   - urlRequest: The native `URLRequest` to execute.
-    /// - Returns: A `HTTPResponse<Response>` object containing the decoded response.
-    open func send<Response: Decodable>(
+    /// - Parameter urlRequest: The request to send.
+    /// - Returns: The decoded response.
+    /// - Throws: ``HTTPRequestError``.
+    public func send<Response: Decodable & Sendable>(
         _ urlRequest: URLRequest
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        do {
-            
-            let response: HTTPResponse<Data> = try await service.send(urlRequest)
-            
-            NetworkLogger.shared.log(response)
-            
-            guard let data = response.data else {
-                return HTTPResponse<Response>(
-                    request: response.request,
-                    response: response.response,
-                    data: nil,
-                    rawData: nil,
-                    error: response.error
-                )
-            }
-            
-            do {
-                let decodedData = try jsonManager.decode(Response.self, from: data)
-                
-                return HTTPResponse<Response>(
-                    request: response.request,
-                    response: response.response,
-                    data: decodedData,
-                    rawData: response.rawData,
-                    error: response.error
-                )
-            } catch let error as DecodingError {
-                NetworkLogger.shared.log(error, type: Response.self, data: data)
-                throw HTTPRequestError.decodingFailed(error)
-            }
-        } catch {
-            throw .requestFailed(error)
-        }
-    }
-    
-    /// Constructs a URLRequest without sending it.
-    open func buildRequest<Parameters: Encodable & Sendable>(
-        _ request: HTTPRequest,
-        parameters: Parameters? = Empty?.none,
-        method: HTTPMethod
-    ) throws -> URLRequest {
-        let encodedParameters = jsonManager.encoder.toDictionary(parameters)
-        return try service.createURLRequest(request, parameters: encodedParameters, method: method)
+        let snapshot = self.snapshot
+        return try decoded(await snapshot.pipeline.data(urlRequest), using: snapshot)
     }
 
-    /// Decodes raw `Data` into a strongly typed `HTTPResponse`.
+    /// Sends a prebuilt request and ignores the response body.
     ///
-    /// This method is intended for decoding non-network payloads such as
-    /// sample JSON, fixtures, or cached responses where no real HTTP exchange
-    /// occurred. Because no network request is performed, the returned
-    /// `HTTPResponse` contains the provided `URLRequest` (if any) and a
-    /// synthesized `HTTPURLResponse` with a `200` status code to represent
-    /// a successful decoding outcome.
+    /// - Parameter urlRequest: The request to send.
+    /// - Returns: The response, with an ``Empty`` body.
+    /// - Throws: ``HTTPRequestError``.
+    @discardableResult
+    public func send(_ urlRequest: URLRequest) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
+        let snapshot = self.snapshot
+        return try decoded(await snapshot.pipeline.data(urlRequest), using: snapshot)
+    }
+
+    /// Builds the request for an endpoint without sending it.
+    ///
+    /// Parameters go where `method` places them: the query string for `GET`, `HEAD` and `DELETE`,
+    /// a JSON body otherwise. Query keys follow the client's ``JSONManager`` key strategy.
+    /// Interceptors do not run.
     ///
     /// - Parameters:
-    ///   - data: The raw JSON data to decode.
-    ///   - request: The originating `URLRequest`, if available.
+    ///   - endpoint: The endpoint.
+    ///   - parameters: The query or body parameters. Optional.
+    ///   - method: The HTTP method.
+    /// - Returns: The request.
+    /// - Throws: ``HTTPRequestError/invalidURL`` or ``HTTPRequestError/encodingFailed(_:)``.
+    public func buildRequest(
+        _ endpoint: some HTTPRequest,
+        parameters: (some Encodable & Sendable)? = Empty?.none,
+        method: HTTPMethod
+    ) throws(HTTPRequestError) -> URLRequest {
+        try buildRequest(endpoint, parameters: parameters, method: method, jsonManager: jsonManager)
+    }
+
+    // MARK: - Decoding
+
+    /// Decodes raw data into a response without any network exchange, for sample data, fixtures
+    /// or cached payloads.
     ///
-    /// - Returns: An `HTTPResponse<Response>` containing the decoded model,
-    ///   the original raw data, the provided request, and a synthesized
-    ///   successful HTTP response.
+    /// The response carries `request` and a synthesized `200` status.
     ///
-    /// - Throws: `HTTPRequestError.decodingFailed` if the data cannot be decoded
-    ///   into the expected response type.
-    public func decode<Response: Decodable>(
+    /// - Parameters:
+    ///   - data: The JSON data.
+    ///   - request: The originating request, if any.
+    /// - Returns: The decoded response.
+    /// - Throws: ``HTTPRequestError/decodingFailed(_:response:)`` when the data does not decode.
+    public func decode<Response: Decodable & Sendable>(
         _ data: Data,
         request: URLRequest?
-    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        do {
-            let decoded = try jsonManager.decode(Response.self, from: data)
+    ) throws(HTTPRequestError) -> HTTPResponse<Response> {
+        try decode(data, request: request, using: snapshot)
+    }
+}
 
-            let response = HTTPURLResponse(
-                url: request?.url ?? URL(string: "about:blank")!,
+// MARK: - Pipeline
+
+extension Netti {
+    /// Sends an endpoint: sample data, then the offline cache, then the network through the
+    /// pipeline, caching a successful response before returning it.
+    func send<Response: Decodable & Sendable>(
+        _ endpoint: some HTTPRequest,
+        method: HTTPMethod,
+        parameters: (some Encodable & Sendable)?
+    ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
+        let snapshot = self.snapshot
+        if let sampleData = endpoint.sampleData {
+            return try decode(sampleData, request: try? endpoint.asURLRequest(for: method), using: snapshot)
+        }
+
+        let urlRequest = try buildRequest(endpoint, parameters: parameters, method: method, jsonManager: snapshot.jsonManager)
+        let cachePolicy = endpoint.cachePolicy
+        if cachePolicy.isCaching,
+           snapshot.connectivity.currentStatus == .disconnected,
+           let cachedData = await cacheStore.read(key: urlRequest.cacheKey, maxAge: cachePolicy.maxAge) {
+            return try decode(cachedData, request: urlRequest, using: snapshot)
+        }
+
+        let response = try await snapshot.pipeline.data(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy)
+        if cachePolicy.isCaching, let statusCode = response.statusCode, (200..<300).contains(statusCode), let rawData = response.rawData {
+            // Awaited, so the entry is readable as soon as this call returns.
+            try? await cacheStore.write(rawData, key: urlRequest.cacheKey)
+        }
+        return try decoded(response, using: snapshot)
+    }
+
+    /// Builds the request for an endpoint, encoding parameters and query keys with `jsonManager`.
+    func buildRequest(
+        _ endpoint: some HTTPRequest,
+        parameters: (some Encodable & Sendable)?,
+        method: HTTPMethod,
+        jsonManager: JSONManager
+    ) throws(HTTPRequestError) -> URLRequest {
+        let urlRequest = try endpoint.asURLRequest(for: method)
+        switch method.defaultParameterDestination {
+            case .queryString:
+                let keyEncoding = URLEncodedFormEncoder.KeyEncoding(jsonManager.encoder.keyEncodingStrategy)
+                return try URLEncodedFormParameterEncoder(encoder: URLEncodedFormEncoder(keyEncoding: keyEncoding))
+                    .encode(parameters, into: urlRequest)
+            case .httpBody:
+                return try JSONParameterEncoder(encoder: jsonManager.encoder).encode(parameters, into: urlRequest)
+        }
+    }
+
+    /// Decodes raw data into a response with a synthesized `200` status.
+    func decode<Response: Decodable & Sendable>(
+        _ data: Data,
+        request: URLRequest?,
+        using snapshot: Snapshot
+    ) throws(HTTPRequestError) -> HTTPResponse<Response> {
+        let response = HTTPResponse<Data>(
+            request: request,
+            response: HTTPURLResponse(
+                url: request?.url ?? URL(fileURLWithPath: "/"),
                 statusCode: 200,
                 httpVersion: nil,
                 headerFields: nil
-            )
+            ),
+            data: data,
+            rawData: data
+        )
+        return try decoded(response, using: snapshot)
+    }
 
-            return HTTPResponse<Response>(
-                request: request,
-                response: response,
-                data: decoded,
-                rawData: data,
-                error: nil
-            )
+    /// Decodes a raw response, logging a decoding failure with the raw body.
+    func decoded<Response: Decodable & Sendable>(
+        _ response: HTTPResponse<Data>,
+        using snapshot: Snapshot
+    ) throws(HTTPRequestError) -> HTTPResponse<Response> {
+        do {
+            return try response.decoded(using: snapshot.jsonManager)
         } catch {
-            throw .decodingFailed(error)
+            if case .decodingFailed(let decodingError as DecodingError, _) = error, let rawData = response.rawData {
+                snapshot.logger?.log(decodingError, type: Response.self, data: rawData)
+            }
+            throw error
         }
-    }
-
-    /// Removes all cached HTTP responses from both memory and disk.
-    ///
-    /// Call this when stale cached data must be discarded unconditionally — for
-    /// example, on logout or after a server-side schema change that invalidates
-    /// all previously cached responses.
-    ///
-    /// - Throws: An error if the underlying disk cache cannot be cleared.
-    public func clearCache() async throws {
-        try await cacheStore.clearAll()
-    }
-
-    /// Removes the cached HTTP response for a specific request.
-    ///
-    /// Use this to invalidate a single endpoint's cached response — for example,
-    /// after a mutation that makes a previously cached GET response stale.
-    ///
-    /// If no cached entry exists for the request, this method returns without error.
-    ///
-    /// - Parameters:
-    ///   - request: The `HTTPRequest` whose cached entry should be removed.
-    ///   - method: The HTTP method used when the response was originally cached.
-    ///             Must match the method used during the original `send` call.
-    ///
-    /// - Throws: An error if the underlying disk cache removal fails.
-    public func clearCache(for request: HTTPRequest, method: HTTPMethod) async throws {
-        let key = request.cacheKey(for: method)
-        try await cacheStore.remove(key: key)
-    }
-
-    /// Returns the cached, decoded response for a request without performing any
-    /// network call.
-    ///
-    /// Use this to render a previously cached response immediately — for example,
-    /// before a silent network refresh in a cache-first flow. Unlike the offline
-    /// fallback inside ``send(_:parameters:method:)``, this reads the cache
-    /// regardless of connectivity.
-    ///
-    /// Returns `nil` when the request did not opt into caching
-    /// (`cachePolicy == .none`), when no cached entry exists, or when the cached
-    /// data cannot be decoded into `Response` (for example, after a schema change
-    /// since it was written). In every "miss" case the caller should fall through
-    /// to ``send(_:parameters:method:)``.
-    ///
-    /// - Parameters:
-    ///   - request: The `HTTPRequest` whose cached response should be read.
-    ///   - method: The HTTP method used to compute the cache key. Must match the
-    ///     method originally used when the response was cached.
-    ///
-    /// - Returns: A decoded `HTTPResponse<Response>` carrying a synthesized `200`
-    ///   response, or `nil` on any cache miss.
-    open func cachedResponse<Response: Decodable>(
-        for request: HTTPRequest,
-        method: HTTPMethod
-    ) async -> HTTPResponse<Response>? {
-        guard request.cachePolicy == .cache else { return nil }
-
-        let cacheKey = request.cacheKey(for: method)
-
-        guard let cachedData = try? await cacheStore.read(key: cacheKey) else {
-            return nil
-        }
-
-        let urlRequest = try? request.asURLRequest(for: method)
-
-        return try? await decode(cachedData, request: urlRequest)
     }
 }
