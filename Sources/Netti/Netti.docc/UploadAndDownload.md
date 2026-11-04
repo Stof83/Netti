@@ -46,6 +46,25 @@ The progress handler receives a ``TransferProgress``. It is called on a backgrou
 
 ``TransferProgress/totalUnitCount`` is `nil` when the size is unknown, for example a download without `Content-Length`.
 
+### Track the progress of a large response
+
+`get`, `post`, `put`, `patch` and `delete` accept the same `progress:` handler, so a large REST response can show how much of it has arrived:
+
+```swift
+let catalog: Catalog? = try await netti.get(CatalogAPI.full, progress: { progress in
+    Task { @MainActor in self.fraction = progress.fractionCompleted }
+}).data
+```
+
+The handler follows the contract above, with these details for data requests:
+
+- It is called at most once per 16 KiB and once per 1% of the announced length, whichever is larger, so a server sending tiny chunks cannot flood it. A body smaller than 16 KiB calls it once, with `1.0`.
+- ``TransferProgress/totalUnitCount`` is `nil` when the response has no `Content-Length`, or one that is zero, negative or smaller than the bytes that actually arrive. The completed count is always the bytes received.
+- A failed request never reports `1.0`. A response served from the offline cache or from sample data does not call the handler.
+- A request with a handler does not share its transfer with an identical in-flight `GET` or `HEAD` (see <doc:MultipleRequestsAndQueues>), so the handler sees the bytes of its own request. Adding a handler to a request that would have been shared costs one extra transfer.
+- When a retry follows a partial body, the completed count never decreases: progress stays still until the new attempt passes the previous one, and `1.0` is reported once, for the attempt that succeeds.
+- A custom ``NetworkService`` that does not implement ``NetworkService/data(for:progress:)`` still works: the handler is called once, with `1.0`, after the response arrives.
+
 ### Download a file
 
 ``Netti/download(_:to:options:resumeData:progress:)`` sends a `GET` and saves the body to disk:

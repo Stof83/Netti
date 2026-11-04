@@ -193,7 +193,13 @@ if response.statusCode == 401 { signOut() }
 
 To send a prebuilt `URLRequest`, use `try await netti.send(URLRequest(url: url))`. Caching and sample data don't apply to it.
 
-→ Full guide: [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md)
+`get`, `post`, `put`, `patch` and `delete` also take `progress:`, to follow a large response as it arrives:
+
+```swift
+let catalog: Catalog? = try await netti.get(CatalogAPI.full, progress: { report($0.fractionCompleted) }).data
+```
+
+→ Full guide: [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md) · [Track the progress of a large response](./Sources/Netti/Netti.docc/UploadAndDownload.md)
 
 ### Configure the client
 

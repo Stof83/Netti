@@ -123,8 +123,28 @@ public final class URLSessionNetworkService: NetworkService {
     /// - Returns: The response; a non-2xx status is returned, not thrown.
     /// - Throws: ``HTTPRequestError`` when no response is received.
     public func data(for request: URLRequest) async throws(HTTPRequestError) -> HTTPResponse<Data> {
+        try await data(for: request, progress: nil)
+    }
+
+    /// Asynchronously sends `request` with `URLSession`, reporting the response body as it arrives.
+    ///
+    /// The handler is called at most once per 16 KiB or 1% of the announced length, whichever is
+    /// larger, so a server sending tiny chunks cannot flood it, then once with a fraction of `1.0`
+    /// when the whole body has arrived. A missing, zero, negative or understated `Content-Length`
+    /// leaves the total unknown.
+    ///
+    /// - Parameters:
+    ///   - request: The request to send.
+    ///   - progress: Called as the body arrives. Optional.
+    /// - Returns: The response; a non-2xx status is returned, not thrown.
+    /// - Throws: ``HTTPRequestError`` when no response is received.
+    public func data(for request: URLRequest, progress: ProgressHandler?) async throws(HTTPRequestError) -> HTTPResponse<Data> {
         try checkCancellation()
-        return try await delegate.data(session.dataTask(with: request), request: request)
+        return try await delegate.data(
+            session.dataTask(with: request),
+            request: request,
+            receiveProgress: ProgressReporter(progress)
+        )
     }
 
     /// Asynchronously uploads `source` as the body of `request` with `URLSession`.

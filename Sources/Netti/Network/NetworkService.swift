@@ -37,6 +37,19 @@ public protocol NetworkService: Sendable {
     /// - Throws: ``HTTPRequestError`` when no response is received.
     func data(for request: URLRequest) async throws(HTTPRequestError) -> HTTPResponse<Data>
 
+    /// Sends `request` and returns the whole response body, reporting how much of it has arrived.
+    ///
+    /// An engine that does not implement this gets a default that calls ``data(for:)`` and then
+    /// reports once, with a fraction of `1.0`, after the response arrives.
+    ///
+    /// - Parameters:
+    ///   - request: The request to send.
+    ///   - progress: Called as the body arrives. Optional.
+    /// - Returns: The response, as for ``data(for:)``.
+    /// - Throws: ``HTTPRequestError`` when no response is received; the handler is then never
+    ///   called with a fraction of `1.0`.
+    func data(for request: URLRequest, progress: ProgressHandler?) async throws(HTTPRequestError) -> HTTPResponse<Data>
+
     /// Uploads `source` as the body of `request` and returns the server's response.
     ///
     /// - Parameters:
@@ -86,4 +99,20 @@ public protocol NetworkService: Sendable {
     /// - Throws: ``HTTPRequestError`` when the handshake fails, including
     ///   ``HTTPRequestError/serverTrustEvaluationFailed(host:reason:)`` when pinning rejects the host.
     func webSocket(for request: URLRequest) async throws(HTTPRequestError) -> any WebSocketTransport
+}
+
+// MARK: - Default Progress
+
+extension NetworkService {
+    /// Sends `request` with ``data(for:)``, then reports once with a fraction of `1.0`.
+    ///
+    /// This keeps engines written for Netti 3.0 working with a progress handler.
+    public func data(for request: URLRequest, progress: ProgressHandler?) async throws(HTTPRequestError) -> HTTPResponse<Data> {
+        let response = try await data(for: request)
+        if let progress {
+            let received = Int64(response.rawData?.count ?? 0)
+            progress(TransferProgress(completedUnitCount: received, totalUnitCount: received))
+        }
+        return response
+    }
 }

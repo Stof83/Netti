@@ -316,7 +316,8 @@ extension Netti {
     func send<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
         method: HTTPMethod,
-        parameters: (some Encodable & Sendable)?
+        parameters: (some Encodable & Sendable)?,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         let snapshot = self.snapshot
         if let sampleData = endpoint.sampleData {
@@ -331,7 +332,7 @@ extension Netti {
             return try decode(cachedData, request: urlRequest, using: snapshot)
         }
 
-        let response = try await snapshot.pipeline.data(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy)
+        let response = try await snapshot.pipeline.data(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy, progress: progress)
         if cachePolicy.isCaching, let statusCode = response.statusCode, (200..<300).contains(statusCode), let rawData = response.rawData {
             // Awaited, so the entry is readable as soon as this call returns.
             try? await cacheStore.write(rawData, key: urlRequest.cacheKey)

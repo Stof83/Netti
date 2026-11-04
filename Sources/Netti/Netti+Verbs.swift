@@ -39,14 +39,18 @@ extension Netti {
     ///   - endpoint: The endpoint.
     ///   - query: Encoded into the URL query, after any query items the URL already has, with keys
     ///     following the client's ``JSONManager`` key strategy. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The decoded response.
     /// - Throws: ``HTTPRequestError``.
     @_disfavoredOverload
     public func get<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
-        query: (some Encodable & Sendable)? = Empty?.none
+        query: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(endpoint, method: .get, parameters: query)
+        try await send(endpoint, method: .get, parameters: query, progress: progress)
     }
 
     /// Sends a `GET` request and ignores the response body.
@@ -54,14 +58,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - query: Encoded into the URL query, with keys following the client's ``JSONManager`` key strategy. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The response, with an ``Empty`` body; read its status and headers.
     /// - Throws: ``HTTPRequestError``.
     @discardableResult
     public func get(
         _ endpoint: some HTTPRequest,
-        query: (some Encodable & Sendable)? = Empty?.none
+        query: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
-        try await send(endpoint, method: .get, parameters: query)
+        try await send(endpoint, method: .get, parameters: query, progress: progress)
     }
 
     // MARK: - HEAD
@@ -88,14 +96,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - query: Encoded into the URL query, with keys following the client's ``JSONManager`` key strategy. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The decoded response.
     /// - Throws: ``HTTPRequestError``.
     @_disfavoredOverload
     public func delete<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
-        query: (some Encodable & Sendable)? = Empty?.none
+        query: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(endpoint, method: .delete, parameters: query)
+        try await send(endpoint, method: .delete, parameters: query, progress: progress)
     }
 
     /// Sends a `DELETE` request and ignores the response body.
@@ -103,14 +115,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - query: Encoded into the URL query, with keys following the client's ``JSONManager`` key strategy. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The response, with an ``Empty`` body; read its status and headers.
     /// - Throws: ``HTTPRequestError``.
     @discardableResult
     public func delete(
         _ endpoint: some HTTPRequest,
-        query: (some Encodable & Sendable)? = Empty?.none
+        query: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
-        try await send(endpoint, method: .delete, parameters: query)
+        try await send(endpoint, method: .delete, parameters: query, progress: progress)
     }
 
     // MARK: - OPTIONS
@@ -148,14 +164,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body; top-level arrays work. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The decoded response.
     /// - Throws: ``HTTPRequestError``.
     @_disfavoredOverload
     public func post<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(endpoint, method: .post, parameters: body)
+        try await send(endpoint, method: .post, parameters: body, progress: progress)
     }
 
     /// Sends a `POST` request and ignores the response body.
@@ -163,14 +183,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The response, with an ``Empty`` body; read its status and headers.
     /// - Throws: ``HTTPRequestError``.
     @discardableResult
     public func post(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
-        try await send(endpoint, method: .post, parameters: body)
+        try await send(endpoint, method: .post, parameters: body, progress: progress)
     }
 
     // MARK: - PUT
@@ -180,14 +204,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The decoded response.
     /// - Throws: ``HTTPRequestError``.
     @_disfavoredOverload
     public func put<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(endpoint, method: .put, parameters: body)
+        try await send(endpoint, method: .put, parameters: body, progress: progress)
     }
 
     /// Sends a `PUT` request and ignores the response body.
@@ -195,14 +223,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The response, with an ``Empty`` body; read its status and headers.
     /// - Throws: ``HTTPRequestError``.
     @discardableResult
     public func put(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
-        try await send(endpoint, method: .put, parameters: body)
+        try await send(endpoint, method: .put, parameters: body, progress: progress)
     }
 
     // MARK: - PATCH
@@ -212,14 +244,18 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The decoded response.
     /// - Throws: ``HTTPRequestError``.
     @_disfavoredOverload
     public func patch<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
-        try await send(endpoint, method: .patch, parameters: body)
+        try await send(endpoint, method: .patch, parameters: body, progress: progress)
     }
 
     /// Sends a `PATCH` request and ignores the response body.
@@ -227,13 +263,17 @@ extension Netti {
     /// - Parameters:
     ///   - endpoint: The endpoint.
     ///   - body: Encoded as the JSON body. Optional.
+    ///   - progress: Called as the response body arrives, on a background queue, in order, with
+    ///     increasing values and a fraction of `1.0` when the request succeeds. A request with a
+    ///     handler does not share its transfer with identical in-flight requests. Optional.
     /// - Returns: The response, with an ``Empty`` body; read its status and headers.
     /// - Throws: ``HTTPRequestError``.
     @discardableResult
     public func patch(
         _ endpoint: some HTTPRequest,
-        body: (some Encodable & Sendable)? = Empty?.none
+        body: (some Encodable & Sendable)? = Empty?.none,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Empty> {
-        try await send(endpoint, method: .patch, parameters: body)
+        try await send(endpoint, method: .patch, parameters: body, progress: progress)
     }
 }

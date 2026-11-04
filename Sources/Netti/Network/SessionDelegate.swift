@@ -14,7 +14,8 @@ import os
 /// `taskIdentifier`, and turns delegate callbacks into the engine contract:
 /// - server trust challenges are decided by the ``ServerTrustPolicy``, and a rejection surfaces as
 ///   ``HTTPRequestError/serverTrustEvaluationFailed(host:reason:)`` instead of a cancellation;
-/// - upload and download progress go through a ``ProgressReporter``;
+/// - upload and download progress go through a ``ProgressReporter``, and so does the received
+///   body of a data task, rate-bounded by bytes;
 /// - redirects go through a ``RedirectHandler``, ``RedirectHandler/secure`` when none is given;
 /// - data-task bodies are capped at `maximumResponseSize`, and byte-stream buffers at
 ///   `maximumBufferedStreamBytes` unread bytes;
@@ -32,6 +33,9 @@ final class SessionDelegate: NSObject, Sendable {
 
     /// The longest deadline scheduled; a longer `maximumRequestDuration` is clamped to it.
     private static let longestDeadline = Duration.seconds(Int64(Int32.max))
+
+    /// The fewest bytes a data task's received count advances between two progress reports.
+    private static let minimumReportStep: Int64 = 16 * 1_024
 
     // MARK: - Properties
 
@@ -79,17 +83,25 @@ final class SessionDelegate: NSObject, Sendable {
 
     /// Runs a data or upload task and returns its buffered response.
     ///
-    /// The task fails with `URLError.timedOut` once `maximumRequestDuration` passes.
+    /// `progress` follows the bytes sent; `receiveProgress` follows the response body. The task
+    /// fails with `URLError.timedOut` once `maximumRequestDuration` passes.
     func data(
         _ task: URLSessionTask,
         request: URLRequest,
         progress: ProgressReporter? = nil,
+        receiveProgress: ProgressReporter? = nil,
         bodyStream: (@Sendable () -> InputStream)? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Data> {
         var deadline: Task<Void, Never>?
         let result = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                start(task, TaskState(request: request, completion: .data(continuation), progress: progress, bodyStream: bodyStream))
+                start(task, TaskState(
+                    request: request,
+                    completion: .data(continuation),
+                    progress: progress,
+                    receiveProgress: receiveProgress,
+                    bodyStream: bodyStream
+                ))
                 // Scheduled once registered, so even an immediate deadline finds the task.
                 deadline = scheduleDeadline(for: task)
             }
@@ -228,6 +240,7 @@ extension SessionDelegate: URLSessionDataDelegate, URLSessionDownloadDelegate, U
         let limit = maximumResponseSize
         let step = update(dataTask) { state -> ResponseStep in
             state.response = httpResponse
+            state.announcedLength = response.expectedContentLength
             guard state.failure == nil else {
                 return .cancel
             }
@@ -258,6 +271,7 @@ extension SessionDelegate: URLSessionDataDelegate, URLSessionDownloadDelegate, U
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         let limit = maximumResponseSize
+        let minimumStep = Self.minimumReportStep
         let step = update(dataTask) { state -> DataStep in
             guard state.failure == nil else {
                 return .drop
@@ -271,11 +285,16 @@ extension SessionDelegate: URLSessionDataDelegate, URLSessionDownloadDelegate, U
                 return .cancel
             }
             state.data.append(data)
-            return .drop
+            guard let report = state.nextReceiveReport(minimumStep: minimumStep) else {
+                return .drop
+            }
+            return .report(report.reporter, completed: report.completed, total: report.total)
         }
         switch step {
             case .yield(let body):
                 yield(data, to: body, of: dataTask)
+            case .report(let reporter, let completed, let total):
+                reporter.report(completed: completed, total: total)
             case .cancel:
                 dataTask.cancel()
             case .drop, nil:
@@ -368,6 +387,8 @@ private extension SessionDelegate {
         case drop
         /// Yield it to a stream's body.
         case yield(AsyncThrowingStream<Data, any Error>.Continuation)
+        /// Report the received bytes to the caller's progress handler, outside the lock.
+        case report(ProgressReporter, completed: Int64, total: Int64)
         /// Cancel the task; its recorded failure is reported.
         case cancel
     }
@@ -470,6 +491,7 @@ private extension SessionDelegate {
             case .data(let continuation):
                 guard let failure else {
                     state.progress?.finish(completed: task.countOfBytesSent)
+                    state.receiveProgress?.finish(completed: Int64(state.data.count))
                     let body = state.data
                     continuation.resume(returning: .success(HTTPResponse(request: state.request, response: response, data: body, rawData: body, metrics: state.metrics)))
                     return
@@ -531,8 +553,14 @@ struct TaskState: Sendable {
     let request: URLRequest
     var completion: Completion
     var progress: ProgressReporter?
+    /// Follows the response body of a data task; `progress` follows the bytes an upload sends.
+    var receiveProgress: ProgressReporter?
     var bodyStream: (@Sendable () -> InputStream)?
     var response: HTTPURLResponse?
+    /// The `Content-Length` the server announced, as received: it may be negative, zero or forged.
+    var announcedLength: Int64?
+    /// The received count at the last report to `receiveProgress`.
+    private var lastReceiveReport: Int64 = 0
     var data = Data()
     /// The unread bytes of a stream's body.
     var streamBuffer = StreamBufferMeter()
@@ -547,15 +575,43 @@ struct TaskState: Sendable {
         request: URLRequest,
         completion: Completion,
         progress: ProgressReporter? = nil,
+        receiveProgress: ProgressReporter? = nil,
         bodyStream: (@Sendable () -> InputStream)? = nil
     ) {
         self.request = request
         self.completion = completion
         self.progress = progress
+        self.receiveProgress = receiveProgress
         self.bodyStream = bodyStream
     }
 
     // MARK: - Mutation
+
+    /// What to report to `receiveProgress` after a chunk was appended to `data`, or `nil` for nothing.
+    ///
+    /// Reports only once the received count has advanced by at least `minimumStep` and 1% of the
+    /// announced length since the last report, so a server sending tiny chunks cannot flood the
+    /// handler. An announced length that is not positive, or that the body has already outgrown,
+    /// counts as unknown. Completion is left to ``ProgressReporter/finish(completed:)``, so a
+    /// fraction of `1.0` is never reported before the transfer succeeds.
+    mutating func nextReceiveReport(minimumStep: Int64) -> (reporter: ProgressReporter, completed: Int64, total: Int64)? {
+        guard let reporter = receiveProgress else {
+            return nil
+        }
+        let received = Int64(data.count)
+        var total: Int64 = 0
+        if let announcedLength, announcedLength > 0, announcedLength >= received {
+            guard announcedLength > received else {
+                return nil
+            }
+            total = announcedLength
+        }
+        guard received - lastReceiveReport >= max(minimumStep, total / 100) else {
+            return nil
+        }
+        lastReceiveReport = received
+        return (reporter, received, total)
+    }
 
     mutating func apply<Result>(_ body: (inout TaskState) -> Result) -> Result {
         body(&self)

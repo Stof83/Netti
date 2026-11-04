@@ -129,15 +129,30 @@ struct RequestPipeline: Sendable {
     }
 
     /// Sends a data request, sharing the transfer with identical in-flight `GET` and `HEAD` requests.
+    ///
+    /// A request with a `progress` handler does not share its transfer, so the handler sees the bytes
+    /// of its own request. One reporter serves every attempt: retries never move progress backwards,
+    /// and `1.0` is reported once, for the attempt that ends the request.
     func data(
         _ request: URLRequest,
         validation: ResponseValidation? = nil,
-        retryPolicy: RetryPolicy? = nil
+        retryPolicy: RetryPolicy? = nil,
+        progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Data> {
-        try await run(request, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
-            let response = try await transferData(sent)
+        guard let reporter = ProgressReporter(progress) else {
+            return try await run(request, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
+                let response = try await transferData(sent)
+                return Attempt(output: response, response: response)
+            }
+        }
+        let service = service
+        let handler = Self.attemptHandler(reporting: reporter)
+        let response = try await run(request, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
+            let response = try await service.data(for: sent, progress: handler)
             return Attempt(output: response, response: response)
         }
+        reporter.finish(completed: Int64(response.rawData?.count ?? 0))
+        return response
     }
 
     /// Opens a WebSocket for `request` after adapting it.
@@ -186,6 +201,18 @@ extension RequestPipeline {
 // MARK: - Private Helpers
 
 private extension RequestPipeline {
+    /// Forwards an attempt's progress to `reporter`, except its completion: an engine reports
+    /// `1.0` for any response it returns, including one that is about to be retried, so the
+    /// pipeline reports completion itself once the request ends.
+    static func attemptHandler(reporting reporter: ProgressReporter) -> ProgressHandler {
+        { progress in
+            if let total = progress.totalUnitCount, progress.completedUnitCount >= total {
+                return
+            }
+            reporter.report(completed: progress.completedUnitCount, total: progress.totalUnitCount ?? 0)
+        }
+    }
+
     /// Checks cancellation, adapts `request`, rejects headers that would split on the wire, and
     /// reports it as sent.
     func prepare(_ request: URLRequest) async throws(HTTPRequestError) -> URLRequest {
