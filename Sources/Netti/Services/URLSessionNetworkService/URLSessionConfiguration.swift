@@ -26,7 +26,7 @@ public protocol ParameterEncoder {
 ///
 /// - Important: Deprecated since 2.0. Engines no longer encode parameters: ``Netti`` encodes
 ///   queries with ``URLEncodedFormParameterEncoder`` and bodies with ``JSONParameterEncoder``.
-///   Configure the engine with ``URLSessionNetworkService/init(configuration:trustPolicy:redirectHandler:maxConnectionsPerHost:maximumResponseSize:maximumRequestDuration:)``.
+///   Configure the engine with ``URLSessionNetworkService/init(configuration:trustPolicy:redirectHandler:maxConnectionsPerHost:maximumResponseSize:maximumRequestDuration:clientIdentity:)``.
 @available(*, deprecated, message: "Engines no longer encode parameters; Netti encodes with URLEncodedFormParameterEncoder and JSONParameterEncoder.")
 public struct URLSessionConfigurationWrapper {
     /// The encoder used for encoding URL query parameters (typically for GET requests).

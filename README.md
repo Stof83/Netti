@@ -93,6 +93,7 @@ Guides: [Observability](./Sources/Netti/Netti.docc/Observability.md), [Testing](
 | [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md) | Send any HTTP verb with a query or a JSON body, read the response, and drop down to `URLRequest` when you need to. |
 | [Upload & Download](./Sources/Netti/Netti.docc/UploadAndDownload.md) | Upload data, files and multipart forms, and download to disk with progress and resume. |
 | [Certificate Pinning](./Sources/Netti/Netti.docc/CertificatePinning.md) | Pin your servers' public keys or certificates per host, with wildcards, a backup-pin check and a certificate expiry check. |
+| [Mutual TLS](./Sources/Netti/Netti.docc/MutualTLS.md) | Prove your app's identity to a server that requires a client certificate, without weakening the server check. |
 | [Security](./Sources/Netti/Netti.docc/Security.md) | Know what every client protects by default, what to opt into, and what stays your app's job. |
 | [Interceptors & Retry](./Sources/Netti/Netti.docc/InterceptorsAndRetry.md) | Change every request before it is sent, refresh credentials before they expire or when the server rejects them, and retry transient failures. |
 | [Validation & Errors](./Sources/Netti/Netti.docc/ValidationAndErrors.md) | Decide which responses count as failures, and handle every error Netti throws. |
@@ -285,6 +286,17 @@ for expiry in pins.pinnedCertificatesExpiring(within: .seconds(60 * 24 * 60 * 60
 The check covers certificate pins only; key pins don't expire. Ship a new pin in a release before the server switches to it, and keep the old one until then. [EXAMPLES.md](EXAMPLES.md#certificate-pinning-and-expiry) has the full rotation playbook.
 
 → Full guide: [Certificate Pinning](./Sources/Netti/Netti.docc/CertificatePinning.md)
+
+### Mutual TLS
+
+```swift
+let identity = try ClientIdentity(pkcs12: try Data(contentsOf: p12URL), passphrase: passphrase)
+let netti = Netti(service: URLSessionNetworkService(clientIdentity: identity))
+```
+
+The engine presents the identity when a server asks for a client certificate, for data, upload, download, stream and WebSocket requests, and only after the server passed your trust policy. A server that rejects it fails the request with `.requestFailed` carrying `URLError.clientCertificateRejected`; there is no anonymous fallback. The passphrase and the file's bytes are never stored, logged or put in an error.
+
+→ Full guide: [Mutual TLS](./Sources/Netti/Netti.docc/MutualTLS.md)
 
 ### Interceptors, token refresh and retry
 

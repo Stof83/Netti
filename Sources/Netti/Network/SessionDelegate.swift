@@ -14,6 +14,9 @@ import os
 /// `taskIdentifier`, and turns delegate callbacks into the engine contract:
 /// - server trust challenges are decided by the ``ServerTrustPolicy``, and a rejection surfaces as
 ///   ``HTTPRequestError/serverTrustEvaluationFailed(host:reason:)`` instead of a cancellation;
+/// - client-certificate challenges are answered with the ``ClientIdentity`` when one is configured,
+///   and left to the system otherwise; a server that rejects the identity fails the request with
+///   `URLError.clientCertificateRejected`, never an anonymous retry;
 /// - upload and download progress go through a ``ProgressReporter``, and so does the received
 ///   body of a data task, rate-bounded by bytes;
 /// - redirects go through a ``RedirectHandler``, ``RedirectHandler/secure`` when none is given;
@@ -40,6 +43,7 @@ final class SessionDelegate: NSObject, Sendable {
     // MARK: - Properties
 
     private let trustEvaluator: (any ServerTrustEvaluating)?
+    private let clientIdentity: ClientIdentity?
     private let redirectHandler: RedirectHandler
     private let maximumBufferedStreamBytes: Int
     private let registry = OSAllocatedUnfairLock<[Int: TaskState]>(initialState: [:])
@@ -65,14 +69,17 @@ final class SessionDelegate: NSObject, Sendable {
     ///   - maximumResponseSize: The most bytes a data or upload task's body may have; `nil` is unlimited.
     ///   - maximumRequestDuration: The total time a data or upload task may take; `nil` is unlimited.
     ///   - maximumBufferedStreamBytes: The most unread bytes a byte stream may buffer.
+    ///   - clientIdentity: Presented on client-certificate challenges; `nil` leaves them to the system.
     init(
         trustEvaluator: (any ServerTrustEvaluating)?,
         redirectHandler: RedirectHandler? = nil,
         maximumResponseSize: Int? = nil,
         maximumRequestDuration: Duration? = nil,
-        maximumBufferedStreamBytes: Int = StreamBufferMeter.defaultByteLimit
+        maximumBufferedStreamBytes: Int = StreamBufferMeter.defaultByteLimit,
+        clientIdentity: ClientIdentity? = nil
     ) {
         self.trustEvaluator = trustEvaluator
+        self.clientIdentity = clientIdentity
         self.redirectHandler = redirectHandler ?? .secure
         self.maximumResponseSize = maximumResponseSize
         self.maximumRequestDuration = maximumRequestDuration
@@ -173,14 +180,17 @@ final class SessionDelegate: NSObject, Sendable {
 
 extension SessionDelegate: URLSessionDataDelegate, URLSessionDownloadDelegate, URLSessionWebSocketDelegate {
 
-    // Server trust is handled at task level so a rejection can be attributed to its task.
+    // Server trust and client certificates are handled at task level so a rejection can be
+    // attributed to its task. With no session-level callback, URLSession delivers connection-level
+    // challenges here for data, upload, download, byte-stream and WebSocket tasks alike.
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        let (disposition, credential) = trustDisposition(for: challenge, task: task)
+        let (disposition, credential) = clientCertificateDisposition(for: challenge, task: task)
+            ?? trustDisposition(for: challenge, task: task)
         completionHandler(disposition, credential)
     }
 
@@ -191,6 +201,8 @@ extension SessionDelegate: URLSessionDataDelegate, URLSessionDownloadDelegate, U
         newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
+        // A later hop is a new connection; an identity shown to an earlier host says nothing about it.
+        update(task) { $0.didPresentClientIdentity = false }
         let current = task.currentRequest ?? task.originalRequest
         let hasBody = task is URLSessionUploadTask
             || [task.originalRequest, request].contains { $0?.httpBody != nil || $0?.httpBodyStream != nil }
@@ -462,6 +474,30 @@ private extension SessionDelegate {
         }
     }
 
+    /// Answers a client-certificate challenge with the configured identity; `nil` for any other
+    /// challenge, or when no identity is configured, so the system keeps handling it.
+    ///
+    /// With an identity there is no path that answers `.performDefaultHandling`, so the engine never
+    /// falls back to an anonymous connection. Server trust has already been decided by the time a
+    /// server asks for a certificate.
+    func clientCertificateDisposition(
+        for challenge: URLAuthenticationChallenge,
+        task: URLSessionTask
+    ) -> (URLSession.AuthChallengeDisposition, URLCredential?)? {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate,
+              let clientIdentity
+        else {
+            return nil
+        }
+        // A repeated challenge means the server refused the identity once already.
+        guard challenge.previousFailureCount == 0 else {
+            update(task) { $0.failure = .requestFailed(URLError(.clientCertificateRejected)) }
+            return (.cancelAuthenticationChallenge, nil)
+        }
+        update(task) { $0.didPresentClientIdentity = true }
+        return (.useCredential, clientIdentity.credential)
+    }
+
     func trustDisposition(
         for challenge: URLAuthenticationChallenge,
         task: URLSessionTask
@@ -485,7 +521,8 @@ private extension SessionDelegate {
     func complete(_ task: URLSessionTask, state: TaskState, error: (any Error)?) {
         let response = state.response ?? task.response as? HTTPURLResponse
         // A trust or file-system failure explains the cancellation that follows it, so it wins.
-        let failure = state.failure ?? error.map(HTTPRequestError.transport)
+        let failure = state.failure
+            ?? error.map { state.rejectedClientIdentity(for: $0, hasResponse: response != nil) ?? .transport($0) }
 
         switch state.completion {
             case .data(let continuation):
@@ -568,6 +605,8 @@ struct TaskState: Sendable {
     /// A failure detected by the delegate that overrides the transport error.
     var failure: HTTPRequestError?
     var downloadedFileURL: URL?
+    /// Whether the delegate answered a client-certificate challenge with the configured identity.
+    var didPresentClientIdentity = false
 
     // MARK: - Initialization
 
@@ -611,6 +650,25 @@ struct TaskState: Sendable {
         }
         lastReceiveReport = received
         return (reporter, received, total)
+    }
+
+    /// `URLError.clientCertificateRejected` when `error` is a connection failure that came after the
+    /// identity was presented and before any response; `nil` otherwise.
+    ///
+    /// TLS 1.3 completes the client's handshake before the server judges its certificate, so a
+    /// server that rejects the identity usually shows up as a closed connection, not as the alert
+    /// that URLSession reports as `clientCertificateRejected`. The original error is kept as the
+    /// underlying error.
+    func rejectedClientIdentity(for error: any Error, hasResponse: Bool) -> HTTPRequestError? {
+        guard didPresentClientIdentity, hasResponse == false, let urlError = error as? URLError else {
+            return nil
+        }
+        switch urlError.code {
+            case .clientCertificateRejected, .networkConnectionLost, .secureConnectionFailed:
+                return .requestFailed(URLError(.clientCertificateRejected, userInfo: [NSUnderlyingErrorKey: urlError]))
+            default:
+                return nil
+        }
     }
 
     mutating func apply<Result>(_ body: (inout TaskState) -> Result) -> Result {

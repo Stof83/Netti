@@ -74,6 +74,8 @@ Test support ships as a separate product, `NettiTesting`, with a stub server tha
 
 - <doc:Security>
 - <doc:CertificatePinning>
+- <doc:MutualTLS>
+- ``ClientIdentity``
 - ``ServerTrustPolicy``
 - ``ServerTrustEvaluator``
 - ``ServerTrustEvaluating``

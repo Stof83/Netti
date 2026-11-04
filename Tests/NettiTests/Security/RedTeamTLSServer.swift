@@ -21,6 +21,10 @@ import Testing
 ///
 /// Every connection serves one request and is closed. ``requestCount`` counts requests that were
 /// read after a completed handshake, so it stays at zero when the client rejects the server's trust.
+///
+/// With ``ClientAuthentication/require(authority:)`` the server asks for a client certificate and
+/// completes the handshake only for one issued by that authority; ``clientCertificates`` records
+/// every certificate a client presented, accepted or not.
 final class RedTeamTLSServer: @unchecked Sendable {
 
     // MARK: - Types
@@ -34,6 +38,14 @@ final class RedTeamTLSServer: @unchecked Sendable {
     /// Answers a request; receives its target (`/path?query`).
     typealias Handler = @Sendable (String) -> Response
 
+    /// Whether the server asks the client for a certificate.
+    enum ClientAuthentication: Sendable {
+        /// The server never asks.
+        case none
+        /// The server requires a certificate issued by `authority` (DER) and rejects any other.
+        case require(authority: Data)
+    }
+
     enum ServerError: Error {
         case identityUnavailable(String)
         case listenerFailed
@@ -44,7 +56,14 @@ final class RedTeamTLSServer: @unchecked Sendable {
     private let listener: NWListener
     private let handler: Handler
     private let queue = DispatchQueue(label: "netti.tests.redteam-tls")
-    private let state = OSAllocatedUnfairLock(initialState: (port: UInt16(0), connections: 0, requests: 0))
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    private struct State {
+        var port: UInt16 = 0
+        var connections = 0
+        var requests = 0
+        var clientCertificates: [Data] = []
+    }
 
     var port: UInt16 {
         state.withLock { $0.port }
@@ -60,9 +79,19 @@ final class RedTeamTLSServer: @unchecked Sendable {
         state.withLock { $0.requests }
     }
 
+    /// The leaf certificate (DER) of every client that presented one, accepted or not.
+    var clientCertificates: [Data] {
+        state.withLock { $0.clientCertificates }
+    }
+
     // MARK: - Initialization
 
-    private init(identity: SecIdentity, maximumTLSVersion: tls_protocol_version_t?, handler: @escaping Handler) throws {
+    private init(
+        identity: SecIdentity,
+        maximumTLSVersion: tls_protocol_version_t?,
+        clientAuthentication: ClientAuthentication,
+        handler: @escaping Handler
+    ) throws {
         let tls = NWProtocolTLS.Options()
         guard let secIdentity = sec_identity_create(identity) else {
             throw ServerError.identityUnavailable("sec_identity_create failed")
@@ -71,6 +100,28 @@ final class RedTeamTLSServer: @unchecked Sendable {
         if let maximumTLSVersion {
             sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv10)
             sec_protocol_options_set_max_tls_protocol_version(tls.securityProtocolOptions, maximumTLSVersion)
+        }
+        let state = state
+        let queue = queue
+        if case .require(let authority) = clientAuthentication {
+            guard let anchor = SecCertificateCreateWithData(nil, authority as CFData) else {
+                throw ServerError.identityUnavailable("the client authority is not a certificate")
+            }
+            sec_protocol_options_set_peer_authentication_required(tls.securityProtocolOptions, true)
+            sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, presentedTrust, complete in
+                let trust = sec_trust_copy_ref(presentedTrust).takeRetainedValue()
+                if let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first {
+                    let der = SecCertificateCopyData(leaf) as Data
+                    state.withLock { $0.clientCertificates.append(der) }
+                }
+                // Only the test authority is an anchor; the chain is checked for signature and dates.
+                SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+                SecTrustSetAnchorCertificatesOnly(trust, true)
+                SecTrustSetPolicies(trust, SecPolicyCreateBasicX509())
+                SecTrustEvaluateAsyncWithError(trust, queue) { _, isTrusted, _ in
+                    complete(isTrusted)
+                }
+            }, queue)
         }
         let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
@@ -82,12 +133,19 @@ final class RedTeamTLSServer: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - maximumTLSVersion: Caps the TLS version the server accepts; `nil` keeps the system range.
+    ///   - clientAuthentication: Whether to require a client certificate; none by default.
     ///   - handler: Answers each request. Defaults to `200 ok`.
     static func start(
         maximumTLSVersion: tls_protocol_version_t? = nil,
+        clientAuthentication: ClientAuthentication = .none,
         handler: @escaping Handler = { _ in Response() }
     ) async throws -> RedTeamTLSServer {
-        let server = try RedTeamTLSServer(identity: try identity.get(), maximumTLSVersion: maximumTLSVersion, handler: handler)
+        let server = try RedTeamTLSServer(
+            identity: try identity.get(),
+            maximumTLSVersion: maximumTLSVersion,
+            clientAuthentication: clientAuthentication,
+            handler: handler
+        )
         try await server.run()
         return server
     }

@@ -18,6 +18,7 @@ Know what every client protects by default, what to opt into, and what stays you
 | A stream or WebSocket fails when its consumer falls 8 MB, or 1,000 WebSocket messages, behind | None |
 | Header names must be RFC 9110 tokens, and values must not hold control characters other than tab; forms nest at most 32 levels; multipart boundaries and MIME types are checked | None; the request fails with ``HTTPRequestError/encodingFailed(_:)`` |
 | The request line never holds a raw control character: CR, LF, NUL and the rest of U+0000 to U+001F and U+007F in a path or query value are sent percent-encoded (`%0D%0A`), so a value cannot split the request or forge a header, and a newline in a query value still reaches the server intact | None |
+| With a ``ClientIdentity``, a client-certificate request is answered with it only after the server passed the trust policy, and a server that rejects it fails the request with `URLError.clientCertificateRejected`; there is no anonymous fallback. See <doc:MutualTLS> | Omit `clientIdentity`, and the system decides |
 | A `Retry-After` wait over 60 s is not retried, and a malformed one is ignored | ``RetryPolicy/maximumRetryAfter`` |
 | A response to a request with `Authorization` never goes into `URLCache`; the disk cache is excluded from backups and file-protected | None |
 | ``NetworkLogger`` is on in DEBUG builds only, and redacts credentials | ``Netti/isLoggingEnabled`` |

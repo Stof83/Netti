@@ -25,6 +25,8 @@ import Foundation
 /// - A byte stream or WebSocket whose consumer falls more than 8 MB or 1,000 messages behind fails
 ///   with the same error.
 /// - A response to a request carrying `Authorization` is never stored in `URLCache`.
+/// - With a `clientIdentity`, the engine answers client-certificate challenges with it and never
+///   falls back to an anonymous connection.
 /// - A data or upload request, response included, must finish within `maximumRequestDuration`,
 ///   300 seconds by default, or it fails with ``HTTPRequestError/requestFailed(_:)`` carrying
 ///   `URLError.timedOut`, so a server that drips bytes cannot hold it open for days. Byte streams,
@@ -64,13 +66,19 @@ public final class URLSessionNetworkService: NetworkService {
     ///     idle timeout that a server sending one byte at a time keeps resetting. Byte streams,
     ///     WebSockets and downloads have no deadline, so a live feed stays open. Pass a longer
     ///     duration for large uploads on slow networks, or `nil` for no limit.
+    ///   - clientIdentity: The identity presented when a server asks for a client certificate, for
+    ///     mutual TLS. `nil`, the default, leaves client-certificate challenges to the system. The
+    ///     server is evaluated with `trustPolicy` first, and a server that rejects the identity
+    ///     fails the request with ``HTTPRequestError/requestFailed(_:)`` carrying
+    ///     `URLError.clientCertificateRejected`; the engine never retries without it.
     public convenience init(
         configuration: URLSessionConfiguration = .default,
         trustPolicy: ServerTrustPolicy? = nil,
         redirectHandler: RedirectHandler? = nil,
         maxConnectionsPerHost: Int? = nil,
         maximumResponseSize: Int? = 64 * 1024 * 1024,
-        maximumRequestDuration: Duration? = .seconds(300)
+        maximumRequestDuration: Duration? = .seconds(300),
+        clientIdentity: ClientIdentity? = nil
     ) {
         let configuration = configuration.copyRequiringTLS12()
         if let maxConnectionsPerHost {
@@ -82,7 +90,8 @@ public final class URLSessionNetworkService: NetworkService {
                 trustEvaluator: trustPolicy,
                 redirectHandler: redirectHandler,
                 maximumResponseSize: maximumResponseSize,
-                maximumRequestDuration: maximumRequestDuration
+                maximumRequestDuration: maximumRequestDuration,
+                clientIdentity: clientIdentity
             )
         )
     }
