@@ -11,7 +11,7 @@ Netti needs iOS 17, macOS 14, tvOS 17, watchOS 10 or Mac Catalyst 17, and a Swif
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/Stof83/Netti.git", from: "3.0.0"),
+    .package(url: "https://github.com/Stof83/Netti.git", from: "3.1.0"),
 ],
 targets: [
     .target(name: "App", dependencies: ["Netti"]),

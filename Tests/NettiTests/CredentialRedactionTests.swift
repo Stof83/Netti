@@ -149,7 +149,7 @@ struct CredentialRedactionTests {
         var request = makeURLRequest(method: "POST")
         request.httpBody = Data(text.utf8)
 
-        #expect(request.asCurl().contains("-d '\(text)'"))
+        #expect(request.asCurl().contains("--data-raw '\(text)'"))
     }
 
     // MARK: - Decoding Failure (TM-37)

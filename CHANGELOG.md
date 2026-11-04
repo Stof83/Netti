@@ -4,6 +4,23 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.0] - 2026-11-04
+
+Netti 3.1 is additive. Nothing is removed or deprecated, and code written for 3.0 compiles and behaves as before. See [MIGRATION.md](MIGRATION.md#netti-30-to-31).
+
+### Added
+
+- **requests**: `progress: ProgressHandler? = nil` on the ten body-returning verb overloads (`get`, `post`, `put`, `patch` and `delete`, typed and `Empty`). It reports a response body as it arrives, at a bounded rate (at most one report per `max(16 KiB, announced length / 100)` bytes), never `1.0` before the transfer completes and never decreasing across retries. A request with a handler does not share its transfer with identical in-flight requests. A response served from `sampleData` or the offline cache calls the handler once, with `1.0`.
+- **requests**: `NetworkService.data(for:progress:)`. Custom `NetworkService` conformers need no change: the default reports one final `1.0`.
+- **security**: `ClientIdentity` and `URLSessionNetworkService(clientIdentity:)` for mutual TLS. The identity is built from PKCS#12 data and is presented only for client-certificate challenges, after server trust passed. Neither the passphrase nor the bytes are stored, logged or put in an error, and there is no anonymous fallback when a server rejects the identity. See the [Mutual TLS guide](Sources/Netti/Netti.docc/MutualTLS.md).
+- **monitoring**: `URLRequest.cURLDescription(maskingSensitiveValues:)`, a public, shell-safe cURL command. Credentials are replaced by `<redacted>` unless you pass `false`.
+- **security**: the guarantee that a control character in a URL path or query never reaches the wire raw is now documented and covered by tests. No code change was needed: Foundation already percent-encodes them.
+
+### Changed
+
+- **monitoring**: the cURL command in `NetworkLogger` output is now single-quoted, sends the body with `--data-raw` and no longer includes `-v`. Anything that parses log lines should expect the new form.
+- **monitoring**: a control character other than a line feed or tab in a cURL command (ESC, carriage return, bell) is written as a `$'\xHH'` escape, never raw, so pasting a command cannot drive the terminal.
+
 ## [3.0.0] - 2026-11-02
 
 ### BREAKING CHANGES

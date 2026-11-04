@@ -1,12 +1,26 @@
 # Migrating to Netti 3.0
 
-Netti 2.0 and 3.0 break source compatibility on purpose. This guide covers three paths:
+Netti 2.0 and 3.0 break source compatibility on purpose. This guide covers four paths:
 
+- [Netti 3.0 to 3.1](#netti-30-to-31): additive, nothing to change
 - [Netti 2.x to 3.0](#netti-2x-to-30): the Alamofire engine and the Alamofire dependency are removed
 - [Netti 1.x to 2.0](#netti-1x-to-20): a one-to-one API mapping, then every breaking change with before and after code
 - [Alamofire to Netti](#alamofire-to-netti): concept mapping for code that calls Alamofire directly
 
 To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from: "1.5.0")`, which never resolves to 2.x.
+
+## Netti 3.0 to 3.1
+
+3.1 only adds API, so raise the requirement to `from: "3.1.0"` and rebuild. Nothing is removed, renamed or deprecated, and every 3.0 call keeps its behavior. What is new, all opt-in:
+
+- `progress:` on `get`, `post`, `put`, `patch` and `delete`. Without it, nothing changes, including sharing one transfer between identical in-flight `GET` requests. With it, that request opens its own transfer.
+- `URLSessionNetworkService(clientIdentity:)` and `ClientIdentity`, for servers that require a client certificate.
+- `URLRequest.cURLDescription(maskingSensitiveValues:)`.
+
+Two things to check:
+
+- **A custom `NetworkService`.** The new `data(for:progress:)` requirement has a default implementation, so your conformer still compiles. With a handler it reports one final `1.0` instead of live progress; implement `data(for:progress:)` to report as bytes arrive.
+- **Code that parses `NetworkLogger` output.** The logged cURL command is now single-quoted, uses `--data-raw` for the body and no longer contains `-v`. It stays masked, and it is still logged only when `isLoggingEnabled` is on.
 
 ## Netti 2.x to 3.0
 

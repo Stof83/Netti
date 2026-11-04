@@ -64,6 +64,7 @@ The handler follows the contract above, with these details for data requests:
 - A request with a handler does not share its transfer with an identical in-flight `GET` or `HEAD` (see <doc:MultipleRequestsAndQueues>), so the handler sees the bytes of its own request. Adding a handler to a request that would have been shared costs one extra transfer.
 - When a retry follows a partial body, the completed count never decreases: progress stays still until the new attempt passes the previous one, and `1.0` is reported once, for the attempt that succeeds.
 - A custom ``NetworkService`` that does not implement ``NetworkService/data(for:progress:)`` still works: the handler is called once, with `1.0`, after the response arrives.
+- A response served without the network, from an endpoint's `sampleData` or from the offline cache, also calls the handler once, with `1.0`.
 
 ### Download a file
 

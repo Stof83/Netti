@@ -359,6 +359,47 @@ struct DataProgressTests {
         #expect(handlers.values == [false])
     }
 
+    // MARK: - Local Responses
+
+    @Test("given sample data and a handler, when sent, then the handler is called once with 1.0 and no transport call is made")
+    func sampleData_reportsCompletion() async throws {
+        let service = StubNetworkService()
+        var endpoint = TestEndpoint()
+        let sample = try JSONEncoder().encode(Widget(id: 1, name: "sample"))
+        endpoint.sampleData = sample
+        let recorder = ProgressRecorder()
+
+        let response: HTTPResponse<Widget> = try await makeNetti(service: service).get(endpoint, progress: recorder.handler)
+
+        #expect(response.data == Widget(id: 1, name: "sample"))
+        #expect(recorder.updates == [TransferProgress(completedUnitCount: Int64(sample.count), totalUnitCount: Int64(sample.count))])
+        #expect(service.requests.isEmpty)
+    }
+
+    @Test("given a cached response and no connectivity, when sent with a handler, then the handler is called once with 1.0")
+    func offlineCache_reportsCompletion() async throws {
+        let connectivity = StubConnectivity(.connected)
+        let service = StubNetworkService { request in
+            if connectivity.currentStatus == .disconnected {
+                throw URLError(.notConnectedToInternet)
+            }
+            return try .json(for: request, Widget(id: 1, name: "cached"))
+        }
+        let netti = makeNetti(service: service, connectivity: connectivity)
+        var endpoint = TestEndpoint()
+        endpoint.cachePolicy = .cache
+        let _: HTTPResponse<Widget> = try await netti.get(endpoint)
+        connectivity.set(.disconnected)
+        let recorder = ProgressRecorder()
+
+        let response: HTTPResponse<Widget> = try await netti.get(endpoint, progress: recorder.handler)
+
+        #expect(response.data?.name == "cached")
+        recorder.expectCompleted()
+        #expect(recorder.updates.count == 1)
+        #expect(service.requests.count == 1)
+    }
+
     // MARK: - Helpers
 
     private static func head(contentLength: Int) -> Data {

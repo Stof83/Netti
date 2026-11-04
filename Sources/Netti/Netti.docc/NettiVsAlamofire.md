@@ -41,7 +41,7 @@ Netti has no request objects to chain. You describe each endpoint once as an ``H
 | `AF.download`, `download(resumingWith:)` | ``Netti/download(_:to:options:resumeData:progress:)``; resume data travels on the thrown error |
 | `DataStreamRequest` | ``Netti/stream(_:query:)`` with bytes, lines and Server-Sent Events |
 | `WebSocketRequest`, behind `@_spi(WebSocket)` | ``WebSocketConnection``, public, with JSON messages and keep-alive pings |
-| `EventMonitor`, `cURLDescription()` | ``EventMonitor``; ``NetworkLogger`` logs cURL with credentials redacted |
+| `EventMonitor`, `cURLDescription()` | ``EventMonitor``; `URLRequest.cURLDescription(maskingSensitiveValues:)`, and ``NetworkLogger`` logs cURL with credentials redacted |
 | `Redirector` | ``RedirectHandler`` |
 | `NetworkReachabilityManager` | ``NetworkMonitor``, `@Observable` |
 | `URLEncodedFormEncoder`, `JSONParameterEncoder` | ``URLEncodedFormEncoder``, ``JSONParameterEncoder`` |
@@ -59,7 +59,7 @@ Netti has no request objects to chain. You describe each endpoint once as an ``H
 
 - **No Combine publishers.** Netti is async/await only.
 - **No `URLCache`-based response handler.** Netti's own cache is an offline fallback, not an HTTP cache. HTTP caching driven by `Cache-Control` is left to the session's `URLCache`.
-- **No request objects.** You cannot suspend or resume a request, or read its cURL description on demand. Cancel with Swift task cancellation, and read cURL from the logger.
+- **No request objects.** You cannot suspend or resume a request. Cancel with Swift task cancellation. Read a request's cURL description from an event monitor with `URLRequest.cURLDescription(maskingSensitiveValues:)`; see <doc:Observability>.
 - **No custom response serializers.** Responses decode as JSON with ``JSONManager``. For anything else, read ``HTTPResponse/rawData``.
 - **Fixed encoding in the verbs.** Queries use the default ``URLEncodedFormEncoder`` strategies, with keys converted by the client's ``JSONManager`` key strategy, and bodies are always JSON. For other encodings, build the request and call `send(_:)`; see <doc:MakingRequests>.
 - **Progress only on uploads and downloads**, not on plain data requests.

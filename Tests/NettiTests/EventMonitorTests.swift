@@ -123,9 +123,9 @@ struct NetworkLoggerTests {
         let curl = request.asCurl()
 
         #expect(curl.contains("-X POST"))
-        #expect(curl.contains("-H \"Content-Type: application/json\""))
-        #expect(curl.contains("-d '{\"a\":1}'"))
-        #expect(curl.contains("\"\(TestURL.api.absoluteString)\""))
+        #expect(curl.contains("-H 'Content-Type: application/json'"))
+        #expect(curl.contains("--data-raw '{\"a\":1}'"))
+        #expect(curl.contains("'\(TestURL.api.absoluteString)'"))
     }
 
     @Test("given a response, when received, then its method, URL and status are logged")

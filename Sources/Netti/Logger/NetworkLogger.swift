@@ -138,32 +138,98 @@ public struct NetworkLogger: EventMonitor {
 
 
 extension URLRequest {
-    /// The request as a cURL command, with credential headers, query values and the body of a
-    /// request carrying a credential redacted, and credential values redacted in any other JSON or
-    /// form-urlencoded body.
-    func asCurl() -> String {
+    /// The request as a `curl` command you can paste into a terminal.
+    ///
+    /// The command reproduces the method, URL, headers and UTF-8 text body, and carries no flag that
+    /// changes what is sent, such as `-v`. A body that is not valid UTF-8 is left out. The result is
+    /// empty when the request has no URL.
+    ///
+    /// By default credentials are replaced by `<redacted>`: the value of every header and query item
+    /// whose name marks a credential, the whole body of a request that carries a credential header,
+    /// and credential values in any other JSON or form-urlencoded body, by the same rules as
+    /// ``NetworkLogger``. A body over 64 KB is replaced by its byte count. Pass `false` to get every
+    /// value exactly as sent, and take care where you paste the result.
+    ///
+    /// Every header, body and URL is quoted, so a shell passes each value to `curl` unchanged and runs
+    /// nothing else. A control character such as ESC or a carriage return is written as an escape
+    /// (`$'\x1B'`), never raw, so pasting the command cannot drive the terminal.
+    ///
+    /// ```swift
+    /// print(request.cURLDescription())                                    // safe to share
+    /// print(request.cURLDescription(maskingSensitiveValues: false))       // as sent
+    /// ```
+    ///
+    /// - Parameter maskingSensitiveValues: Whether to redact credentials. Defaults to `true`.
+    /// - Returns: The command, or an empty string when the request has no URL.
+    public func cURLDescription(maskingSensitiveValues: Bool = true) -> String {
         guard let url else { return "" }
 
-        var components = ["curl -v"]
-        components.append("-X \(httpMethod ?? "GET")")
+        let method = httpMethod ?? "GET"
+        var components = ["curl", "-X \(method.isShellWord ? method : method.shellQuoted)"]
 
         let headers = (allHTTPHeaderFields ?? [:]).sorted(by: { $0.key < $1.key })
         for (header, value) in headers {
-            components.append("-H \"\(header): \(Redaction.value(value, named: header))\"")
+            let shown = maskingSensitiveValues ? Redaction.value(value, named: header) : value
+            components.append("-H \("\(header): \(shown)".shellQuoted)")
         }
 
         if let body = httpBody {
-            if headers.contains(where: { Redaction.isSensitive($0.key) }) {
-                components.append("-d '\(Redaction.marker)'")
-            } else if body.count > Redaction.maximumLoggedBodySize {
-                components.append("-d '\(Redaction.oversizedBody(byteCount: body.count))'")
+            if maskingSensitiveValues, headers.contains(where: { Redaction.isSensitive($0.key) }) {
+                components.append("--data-raw \(Redaction.marker.shellQuoted)")
+            } else if maskingSensitiveValues, body.count > Redaction.maximumLoggedBodySize {
+                components.append("--data-raw \(Redaction.oversizedBody(byteCount: body.count).shellQuoted)")
             } else if let bodyString = String(data: body, encoding: .utf8) {
-                components.append("-d '\(Redaction.body(bodyString))'")
+                components.append("--data-raw \((maskingSensitiveValues ? Redaction.body(bodyString) : bodyString).shellQuoted)")
             }
         }
 
-        components.append("\"\(Redaction.string(for: url))\"")
+        let shownURL = maskingSensitiveValues ? Redaction.string(for: url) : url.absoluteString
+        components.append(shownURL.shellQuoted)
         return components.joined(separator: " \\\n\t")
+    }
+
+    /// The request as a cURL command with credentials always redacted; what ``NetworkLogger`` logs.
+    func asCurl() -> String {
+        cURLDescription(maskingSensitiveValues: true)
+    }
+}
+
+private extension Unicode.Scalar {
+    /// A control character a terminal acts on, other than a line feed or a tab.
+    var isUnsafeControl: Bool {
+        (value < 0x20 && self != "\n" && self != "\t") || value == 0x7F
+    }
+}
+
+private extension String {
+    /// The text as one shell word.
+    ///
+    /// Plain text is single-quoted, each embedded single quote written as `'\''`. Text with a
+    /// control character other than a line feed or a tab uses the `$'...'` form instead, with each
+    /// one written as `\xHH`, so pasting the command never sends an escape sequence to the terminal.
+    /// A NUL cannot be part of a command-line argument: a shell ends the word at it.
+    var shellQuoted: String {
+        guard unicodeScalars.contains(where: \.isUnsafeControl) else {
+            return "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        var quoted = "$'"
+        for scalar in unicodeScalars {
+            switch scalar {
+            case "\\": quoted += "\\\\"
+            case "'": quoted += "\\'"
+            case "\n": quoted += "\\n"
+            case "\t": quoted += "\\t"
+            case _ where scalar.isUnsafeControl:
+                quoted += "\\x" + (scalar.value < 0x10 ? "0" : "") + String(scalar.value, radix: 16, uppercase: true)
+            default: quoted.unicodeScalars.append(scalar)
+            }
+        }
+        return quoted + "'"
+    }
+
+    /// Whether the text is only ASCII letters, so a shell reads it as one plain word.
+    var isShellWord: Bool {
+        isEmpty == false && utf8.allSatisfy { ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) }
     }
 }
 

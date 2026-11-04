@@ -321,7 +321,9 @@ extension Netti {
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         let snapshot = self.snapshot
         if let sampleData = endpoint.sampleData {
-            return try decode(sampleData, request: try? endpoint.asURLRequest(for: method), using: snapshot)
+            let response: HTTPResponse<Response> = try decode(sampleData, request: try? endpoint.asURLRequest(for: method), using: snapshot)
+            ProgressReporter(progress)?.finish(completed: Int64(sampleData.count))
+            return response
         }
 
         let urlRequest = try buildRequest(endpoint, parameters: parameters, method: method, jsonManager: snapshot.jsonManager)
@@ -329,7 +331,9 @@ extension Netti {
         if cachePolicy.isCaching,
            snapshot.connectivity.currentStatus == .disconnected,
            let cachedData = await cacheStore.read(key: urlRequest.cacheKey, maxAge: cachePolicy.maxAge) {
-            return try decode(cachedData, request: urlRequest, using: snapshot)
+            let response: HTTPResponse<Response> = try decode(cachedData, request: urlRequest, using: snapshot)
+            ProgressReporter(progress)?.finish(completed: Int64(cachedData.count))
+            return response
         }
 
         let response = try await snapshot.pipeline.data(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy, progress: progress)

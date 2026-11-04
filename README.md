@@ -26,6 +26,39 @@ Netti is a Swift networking library built on `URLSession` and Swift concurrency.
 
 Upgrading from 1.x or coming from Alamofire? Read [MIGRATION.md](MIGRATION.md).
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Documentation](#documentation)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [Swift Package Manager](#swift-package-manager)
+  - [Xcode](#xcode)
+- [Usage](#usage)
+  - [Define an endpoint](#define-an-endpoint)
+  - [Requests](#requests)
+  - [Configure the client](#configure-the-client)
+  - [Upload](#upload)
+  - [Download](#download)
+  - [Certificate pinning](#certificate-pinning)
+  - [Mutual TLS](#mutual-tls)
+  - [Interceptors, token refresh and retry](#interceptors-token-refresh-and-retry)
+  - [Validation](#validation)
+  - [Errors](#errors)
+  - [Caching](#caching)
+  - [Streaming, Server-Sent Events and WebSocket](#streaming-server-sent-events-and-websocket)
+  - [Multiple requests and queues](#multiple-requests-and-queues)
+  - [Observability](#observability)
+  - [Redirects](#redirects)
+  - [Security](#security)
+- [Testing](#testing)
+- [Netti vs Alamofire](#netti-vs-alamofire)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [Security](#security-1)
+- [License](#license)
+
 ## Quick Start
 
 With an endpoint already defined (see [Define an endpoint](#define-an-endpoint)):
@@ -43,8 +76,9 @@ See the [Getting Started guide](./Sources/Netti/Netti.docc/GettingStarted.md) fo
 
 - One method per verb: `get`, `head`, `delete`, `options`, `post`, `put`, `patch`, with typed throws
 - JSON bodies, including top-level arrays, and an RFC 3986 URL form encoder for queries
+- Optional `progress:` on every body-returning verb, to follow a large response as it arrives
 
-Guide: [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md)
+Guides: [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md), [Upload & Download](./Sources/Netti/Netti.docc/UploadAndDownload.md)
 
 **Transfers**
 
@@ -56,9 +90,10 @@ Guide: [Upload & Download](./Sources/Netti/Netti.docc/UploadAndDownload.md)
 **Security**
 
 - Certificate and public-key (SPKI) pinning per host, with wildcards, a missing-backup-pin warning and a pinned-certificate expiry check
-- Secure by default: TLS 1.2 floor, credential-safe redirects, response and stream caps, header injection rejected, redacted DEBUG-only logs (see [SECURITY.md](SECURITY.md))
+- Mutual TLS: a PKCS#12 `ClientIdentity` presented to servers that require a client certificate, with the server check unchanged and no passphrase kept
+- Secure by default: TLS 1.2 floor, credential-safe redirects, response and stream caps, header and request-line injection rejected, redacted DEBUG-only logs (see [SECURITY.md](SECURITY.md))
 
-Guides: [Certificate Pinning](./Sources/Netti/Netti.docc/CertificatePinning.md), [Security](./Sources/Netti/Netti.docc/Security.md)
+Guides: [Certificate Pinning](./Sources/Netti/Netti.docc/CertificatePinning.md), [Mutual TLS](./Sources/Netti/Netti.docc/MutualTLS.md), [Security](./Sources/Netti/Netti.docc/Security.md)
 
 **Resilience**
 
@@ -78,6 +113,7 @@ Guide: [Streaming & WebSocket](./Sources/Netti/Netti.docc/StreamingAndWebSocket.
 **Tooling**
 
 - Event monitors with task metrics, and a cURL logger that redacts credentials
+- `URLRequest.cURLDescription()`: copy any request as a shell-safe cURL command, credentials masked unless you opt out
 - Connectivity monitoring with `NWPathMonitor`, observable from SwiftUI
 - `NettiTesting`, a stub server so your tests never touch the network
 - Swift 6 strict concurrency: `Netti`, endpoints and responses are `Sendable`
@@ -118,7 +154,7 @@ The rendered API reference is hosted on Swift Package Index at <https://swiftpac
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Stof83/Netti.git", from: "3.0.0")
+    .package(url: "https://github.com/Stof83/Netti.git", from: "3.1.0")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Netti", package: "Netti")]),
@@ -130,7 +166,7 @@ targets: [
 
 1. Choose File › Add Package Dependencies…
 2. Paste `https://github.com/Stof83/Netti.git`.
-3. Set the dependency rule to "Up to Next Major Version" from 3.0.0.
+3. Set the dependency rule to "Up to Next Major Version" from 3.1.0.
 4. Add the `Netti` product to the app target and `NettiTesting` to the test target.
 
 ## Usage
@@ -452,6 +488,18 @@ netti.monitors = [SlowRequests()]
 ```
 
 Every `EventMonitor` method has a no-op default, so you implement only the events you need. The built-in `NetworkLogger` writes each request as a cURL command to the unified log. It is on in DEBUG builds and off in release builds; change that with `netti.isLoggingEnabled`. It replaces credential values with `<redacted>`: any header, query item or JSON key whose name contains `auth`, `token`, `key`, `secret`, `session`, `cookie`, `password` and similar fragments. The full rules are in [SECURITY.md](SECURITY.md#redaction-rules).
+
+To copy a request as a command, call `cURLDescription()` on the `URLRequest` an event monitor receives. Credentials are replaced by `<redacted>` unless you pass `maskingSensitiveValues: false`, and every value is single-quoted so a shell runs nothing but `curl`:
+
+```swift
+struct CurlMonitor: EventMonitor {
+    func requestDidSend(_ request: URLRequest) {
+        let command = request.cURLDescription()                              // masked
+        let asSent = request.cURLDescription(maskingSensitiveValues: false)  // live tokens, share with care
+        _ = (command, asSent)
+    }
+}
+```
 
 `NetworkMonitor.shared` reports connectivity. Its `status`, `isConnected` and `isDisconnected` are `@MainActor` and observable from SwiftUI:
 

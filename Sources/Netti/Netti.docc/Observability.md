@@ -43,6 +43,32 @@ The rules over-redact on purpose: `Idempotency-Key`, `author`, `footprint`, and 
 
 Your own monitors are not redacted: they receive each request as it is sent, credentials included. Redact before you forward anything to analytics.
 
+### Copy a request as cURL
+
+`URLRequest.cURLDescription(maskingSensitiveValues:)` renders any `URLRequest` as a `curl` command. An event monitor sees each request as it is sent, interceptor headers included, so it is the place to capture one:
+
+```swift
+struct CurlMonitor: EventMonitor {
+    func requestDidSend(_ request: URLRequest) {
+        let command = request.cURLDescription()   // credentials replaced by <redacted>
+        // hand `command` to your own tooling
+        _ = command
+    }
+}
+```
+
+The command reproduces the method, URL, headers and UTF-8 text body, and adds no flag such as `-v`. A body that is not valid UTF-8 is left out, and a request without a URL gives an empty string.
+
+By default the description applies the same redaction rules as the logger. Pass `false` to get every value as sent, for a command you run yourself:
+
+```swift
+let asSent = request.cURLDescription(maskingSensitiveValues: false)
+```
+
+Treat an unmasked command like a password: it holds live tokens. The built-in logger always masks, whatever you do elsewhere.
+
+Every header, body and URL is single-quoted with embedded single quotes escaped, so a shell hands each value to `curl` unchanged and runs nothing else. A body is sent with `--data-raw`, so one that starts with `@` is sent as text and never read from a file.
+
 ### Write an event monitor
 
 Every ``EventMonitor`` method has a no-op default, so implement only the events you need. Events arrive in order, synchronously, on the task that runs the request. Keep them cheap, and hand heavy work to another task.
