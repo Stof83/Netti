@@ -1,12 +1,13 @@
 # Security
 
-Netti is the networking layer under every package built on it, so its defaults decide how credentials, PII and app availability hold up against a hostile network or server. This document lists what Netti 2.0 protects by default, what you opt into, what stays your app's job, and which risks are accepted and why.
+Netti is the networking layer under every package built on it, so its defaults decide how credentials, PII and app availability hold up against a hostile network or server. This document lists what Netti 3 protects by default, what you opt into, what stays your app's job, and which risks are accepted and why.
 
 ## Supported versions
 
 | Version | Security fixes |
 |---|---|
-| 2.0.x | Yes |
+| 3.x | Yes |
+| 2.x | No. Upgrade to 3.x with [MIGRATION.md](MIGRATION.md) |
 | 1.x | No. None of the defaults below exist in 1.x; upgrade with [MIGRATION.md](MIGRATION.md) |
 
 ## Reporting a vulnerability
@@ -132,7 +133,7 @@ These belong to the OS or the server, so Netti documents them rather than reimpl
 
 Mapped from the threat model, `openspec/changes/netti-2/threat-model.md`, against OWASP MASVS v2 and the Mobile Top 10 (2024).
 
-| MASVS control | Netti 2.0 coverage | Findings |
+| MASVS control | Netti 3 coverage | Findings |
 |---|---|---|
 | MASVS-NETWORK-1 | TLS 1.2 floor, `.secure` redirects, token host scope | TM-03, 04, 05, 06, 12, 13, 25 |
 | MASVS-NETWORK-2 | Pins anchor the chain when default validation is off; `.disabled` DEBUG-only; trust failures observable | TM-02, 15, 22 |

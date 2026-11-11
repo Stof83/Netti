@@ -124,7 +124,7 @@ Test support ships as a separate product, `NettiTesting`, with a stub server tha
 
 - <doc:Testing>
 
-### Adopting Netti 2.0
+### Adopting Netti 3
 
 - <doc:MigratingFrom1x>
 - <doc:NettiVsAlamofire>

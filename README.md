@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./Assets/netti-light.png" width="420">
-  <img src="./Assets/netti.png" alt="Netti" width="420">
+  <source media="(prefers-color-scheme: dark)" srcset="./Assets/netti-dark.jpeg" width="420">
+  <img src="./Assets/netti-dark.jpeg" alt="Netti" width="420">
 </picture>
 
 **Async/await networking for Apple platforms. Simple. Swift. Secure.**
@@ -138,7 +138,7 @@ Guides: [Observability](./Sources/Netti/Netti.docc/Observability.md), [Testing](
 | [Multiple Requests & Queues](./Sources/Netti/Netti.docc/MultipleRequestsAndQueues.md) | Run requests concurrently or in sequence, queue them with priorities and an offline hold, and let identical requests share one transfer. |
 | [Observability](./Sources/Netti/Netti.docc/Observability.md) | Log every request, observe the request lifecycle with event monitors, and read transfer metrics. |
 | [Testing](./Sources/Netti/Netti.docc/Testing.md) | Test code that uses Netti without touching the network, with the `NettiTesting` product. |
-| [Migrating from 1.x](./Sources/Netti/Netti.docc/MigratingFrom1x.md) | Move code written for Netti 1.x to the 2.0 API. |
+| [Migrating from 1.x](./Sources/Netti/Netti.docc/MigratingFrom1x.md) | Move code written for Netti 1.x to the current 3.x API. |
 | [Netti vs Alamofire](./Sources/Netti/Netti.docc/NettiVsAlamofire.md) | Compare Netti with Alamofire 5: what maps one to one, what Netti adds, and what it does not do. |
 
 The rendered API reference is hosted on Swift Package Index at <https://swiftpackageindex.com/Stof83/Netti/documentation/netti> once the package is indexed, or build it locally in Xcode with Product › Build Documentation.
