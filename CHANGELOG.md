@@ -4,6 +4,12 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.1] - 2026-11-11
+
+### Documentation
+
+- switch README logo to netti-dark.jpeg and update docs for Netti 3 (48d8952)
+
 ## [3.1.0] - 2026-11-04
 
 Netti 3.1 is additive. Nothing is removed or deprecated, and code written for 3.0 compiles and behaves as before. See [MIGRATION.md](MIGRATION.md#netti-30-to-31).
