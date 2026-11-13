@@ -4,15 +4,11 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [3.2.0] - 2026-11-13
 
 ### Added
 
-- **authentication**: `excluding: [any HTTPRequest] = []` on every `AuthenticationInterceptor` initializer: `init(token:hosts:excluding:refreshLeeway:isRejected:refresh:)`, `init(bearerToken:hosts:excluding:refresh:)` and `init(credential:hosts:excluding:isExpired:isRejected:apply:refresh:)`. An excluded endpoint, such as sign-in, sign-up or refresh, never receives the credential, never waits for a refresh, and its `401` never triggers one and is returned as received. A request matches on the host, port and path of the endpoint's `requestURL`; the scheme, query and HTTP method are ignored.
-
-### Documentation
-
-- `ServerTrustPolicy` documents how to exclude a host from pinning by mapping it to `.default`, and that an exclusion is per host, never per path.
+- **authentication**: add excluding parameter to AuthenticationInterceptor (48668b6)
 
 ## [3.1.1] - 2026-11-11
 
