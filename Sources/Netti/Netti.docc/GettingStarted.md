@@ -67,7 +67,7 @@ try await netti.delete(UserAPI.user(42))
 
 Always annotate the type you expect. Each verb also has an overload that returns ``HTTPResponse`` with an ``Empty`` body and ignores the body. That overload wins when nothing names a type, so `let user = try await netti.get(UserAPI.user(42)).data` is `Empty?`.
 
-By default, ``JSONManager`` decodes responses and encodes bodies with `snake_case` keys and the date format `yyyy-MM-dd'T'HH:mm:ss.SSSZ`. Query keys follow the same key strategy; query dates are ISO 8601. Set your own manager to change that:
+By default, ``JSONManager`` decodes responses and encodes bodies with `snake_case` keys and the date format `yyyy-MM-dd'T'HH:mm:ss.SSSZ`. Query keys follow the same key strategy; query dates always use that default format, even with a custom manager. Set your own manager to change keys and body dates:
 
 ```swift
 let netti = Netti()

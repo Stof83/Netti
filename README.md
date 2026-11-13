@@ -219,7 +219,7 @@ try await netti.delete(UserAPI.user(42))
 let status = try await netti.head(UserAPI.user(42)).statusCode
 ```
 
-`GET`, `HEAD` and `DELETE` put `query` in the URL. `POST`, `PUT` and `PATCH` send `body` as JSON, encoded with the client's `JSONManager`. Query and body keys both follow the `JSONManager` key strategy, snake_case by default, so `pageNumber` is sent as `page_number`. Query dates are ISO 8601. When you don't annotate a response type, the call returns `HTTPResponse<Empty>` and ignores the body.
+`GET`, `HEAD` and `DELETE` put `query` in the URL. `POST`, `PUT` and `PATCH` send `body` as JSON, encoded with the client's `JSONManager`. Query and body keys both follow the `JSONManager` key strategy, snake_case by default, so `pageNumber` is sent as `page_number`. Query dates use the `JSONManager` default format, `yyyy-MM-dd'T'HH:mm:ss.SSSZ`. When you don't annotate a response type, the call returns `HTTPResponse<Empty>` and ignores the body.
 
 `HTTPResponse.data` is optional. A 2xx body that fails to decode throws `.decodingFailed`, so on success `data` is set. Non-2xx responses are returned, not thrown, unless validation is on. Their `data` is `nil` when the body doesn't decode as the requested type, and `statusCode` and `rawData` are always available:
 

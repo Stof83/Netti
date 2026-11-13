@@ -112,6 +112,21 @@ struct URLEncodedFormEncoderTests {
         #expect(try URLEncodedFormEncoder(dateEncoding: strategy).encode(["at": date]) == "at=\(expected)")
     }
 
+    @Test("given the default date strategy, when encoded, then the date matches JSONManager's default format")
+    func encode_defaultDateStrategy_usesJSONManagerFormat() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000.123)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+
+        let query = try URLEncodedFormEncoder().encode(["at": date])
+        let value = try #require(query.split(separator: "=", maxSplits: 1).last?.removingPercentEncoding)
+
+        #expect(value == formatter.string(from: date))
+        #expect(value.wholeMatch(of: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.123[+-]\d{4}/) != nil)
+    }
+
     @Test("given nested values, when encoded, then bracket keys are used and nil members are omitted")
     func encode_nested_usesBracketKeys() throws {
         let value = Nested(user: "ada", address: .init(city: "Rome", zip: nil))

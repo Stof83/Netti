@@ -65,7 +65,7 @@ Methods without a verb, such as `TRACE`, go through ``Netti/buildRequest(_:param
 
 ### Encoding changed
 
-- Query parameters are encoded with ``URLEncodedFormEncoder``. Keys still follow the client's ``JSONManager`` key strategy, so `pageNumber` is sent as `page_number` by default, as in 1.x. Dates now use ISO 8601 instead of the ``JSONManager`` date format. A key that starts with an acronym converts differently, in queries and JSON bodies alike: `URLValue` was `u_rl_value` in 1.x and is now `url_value`, and `ID` was `i_d` and is now `id`. To keep the old spelling, declare `CodingKeys` on the type.
+- Query parameters are encoded with ``URLEncodedFormEncoder``. Keys still follow the client's ``JSONManager`` key strategy, so `pageNumber` is sent as `page_number` by default, as in 1.x. Dates use `yyyy-MM-dd'T'HH:mm:ss.SSSZ`, the default ``JSONManager`` date format, as in 1.x. A custom `JSONManager` date format is not applied to queries; encode the query with ``URLEncodedFormParameterEncoder`` and a ``URLEncodedFormEncoder`` using `dateEncoding: .formatted(_:)`, then call `send(_:)`. A key that starts with an acronym converts differently, in queries and JSON bodies alike: `URLValue` was `u_rl_value` in 1.x and is now `url_value`, and `ID` was `i_d` and is now `id`. To keep the old spelling, declare `CodingKeys` on the type.
 - JSON bodies are encoded straight to `Data`, so top-level arrays work and `Decimal` keeps its precision.
 - Query items already in the URL are kept, and `+` is escaped.
 

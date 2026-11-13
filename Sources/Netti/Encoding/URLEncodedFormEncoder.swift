@@ -86,6 +86,18 @@ public struct URLEncodedFormEncoder: Sendable {
             }
         }
 
+        /// `yyyy-MM-dd'T'HH:mm:ss.SSSZ` in the current time zone, for example `2026-10-27T11:00:00.000+0100`.
+        ///
+        /// Matches ``JSONManager``'s default date format, so query and body dates match.
+        @usableFromInline
+        static let `default`: DateEncoding = {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone.current
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            return .formatted(formatter)
+        }()
+
         private static let millisecondsPerSecond: TimeInterval = 1000
 
         private static func epochString(_ interval: TimeInterval) -> String {
@@ -150,7 +162,8 @@ public struct URLEncodedFormEncoder: Sendable {
     public var arrayEncoding: ArrayEncoding
     /// How `Bool` values are written. Default `.literal`.
     public var boolEncoding: BoolEncoding
-    /// How `Date` values are written. Default `.iso8601`.
+    /// How `Date` values are written. Default `yyyy-MM-dd'T'HH:mm:ss.SSSZ` in the current time zone, matching
+    /// ``JSONManager``.
     public var dateEncoding: DateEncoding
     /// How keys are transformed. Default `.useDefaultKeys`.
     public var keyEncoding: KeyEncoding
@@ -165,14 +178,15 @@ public struct URLEncodedFormEncoder: Sendable {
     ///   - alphabetizeKeyValuePairs: Sorts keys at every nesting level. `true` by default.
     ///   - arrayEncoding: How array elements are keyed. `.noBrackets` by default.
     ///   - boolEncoding: How `Bool` values are written. `.literal` by default.
-    ///   - dateEncoding: How `Date` values are written. `.iso8601` by default.
+    ///   - dateEncoding: How `Date` values are written. `yyyy-MM-dd'T'HH:mm:ss.SSSZ` in the current time zone by
+    ///     default, matching ``JSONManager``.
     ///   - keyEncoding: How keys are transformed. `.useDefaultKeys` by default.
     ///   - spaceEncoding: How spaces are escaped. `.percentEscaped` by default.
     public init(
         alphabetizeKeyValuePairs: Bool = true,
         arrayEncoding: ArrayEncoding = .noBrackets,
         boolEncoding: BoolEncoding = .literal,
-        dateEncoding: DateEncoding = .iso8601,
+        dateEncoding: DateEncoding = .default,
         keyEncoding: KeyEncoding = .useDefaultKeys,
         spaceEncoding: SpaceEncoding = .percentEscaped
     ) {
