@@ -8,7 +8,7 @@ import Foundation
 /// A bearer access token with the optional refresh token and expiration date of its login or
 /// refresh response.
 ///
-/// Give it to ``AuthenticationInterceptor/init(token:hosts:refreshLeeway:isRejected:refresh:)``,
+/// Give it to ``AuthenticationInterceptor/init(token:hosts:excluding:refreshLeeway:isRejected:refresh:)``,
 /// which refreshes it shortly before ``expiresAt`` and whenever the server rejects it.
 ///
 /// ```swift
@@ -110,6 +110,8 @@ extension AuthenticationInterceptor where Credential == AuthToken {
     ///   - token: The token to start with.
     ///   - hosts: The only hosts that receive the token, matched exactly and case-insensitively.
     ///     `nil`, the default, sends it to every host.
+    ///   - excluding: The endpoints that never receive the token, never wait for a refresh, and
+    ///     whose `401` never refreshes it, such as sign-in, sign-up and refresh. Empty by default.
     ///   - refreshLeeway: How long before ``AuthToken/expiresAt`` the token counts as expired, so a
     ///     request is not sent with a token that expires in flight or because of a clock that is a
     ///     little off. Thirty seconds by default.
@@ -120,18 +122,28 @@ extension AuthenticationInterceptor where Credential == AuthToken {
     public convenience init(
         token: AuthToken,
         hosts: Set<String>? = nil,
+        excluding: [any HTTPRequest] = [],
         refreshLeeway: Duration = .seconds(30),
         isRejected: @escaping @Sendable (RetryContext) -> Bool = { $0.statusCode == 401 },
         refresh: @escaping @Sendable (AuthToken) async throws -> AuthToken
     ) {
-        self.init(token: token, hosts: hosts, refreshLeeway: refreshLeeway, isRejected: isRejected, now: { Date() }, refresh: refresh)
+        self.init(
+            token: token,
+            hosts: hosts,
+            excluding: excluding,
+            refreshLeeway: refreshLeeway,
+            isRejected: isRejected,
+            now: { Date() },
+            refresh: refresh
+        )
     }
 
-    /// The designated form of ``init(token:hosts:refreshLeeway:isRejected:refresh:)``, with the
-    /// clock injectable for tests.
+    /// The designated form of ``init(token:hosts:excluding:refreshLeeway:isRejected:refresh:)``,
+    /// with the clock injectable for tests.
     convenience init(
         token: AuthToken,
         hosts: Set<String>?,
+        excluding: [any HTTPRequest] = [],
         refreshLeeway: Duration,
         isRejected: @escaping @Sendable (RetryContext) -> Bool,
         now: @escaping @Sendable () -> Date,
@@ -140,6 +152,7 @@ extension AuthenticationInterceptor where Credential == AuthToken {
         self.init(
             credential: token,
             hosts: hosts,
+            excluding: excluding,
             isExpired: { $0.isExpired(at: now(), leeway: refreshLeeway) },
             isRejected: isRejected,
             apply: { token, request in

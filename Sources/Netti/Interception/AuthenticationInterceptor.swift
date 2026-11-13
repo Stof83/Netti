@@ -49,6 +49,20 @@ import Foundation
 /// AuthenticationInterceptor(bearerToken: token, hosts: ["api.example.com"]) { _ in try await api.refreshToken() }
 /// ```
 ///
+/// Pass `excluding` for the endpoints that sign in, sign up or refresh: a `401` from them means
+/// bad credentials, not an expired session. An excluded request carries no credential, never waits
+/// for a refresh, and its `401` never refreshes:
+///
+/// ```swift
+/// AuthenticationInterceptor(bearerToken: token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { _ in try await api.refreshToken() }
+/// ```
+///
+/// A request matches an excluded endpoint on the host, port and path of its
+/// ``HTTPRequest/requestURL``, resolved on every request; the scheme, query and HTTP method are
+/// ignored. An endpoint whose path depends on an associated value excludes only that path. Don't
+/// exclude a refresh endpoint that expects the expired credential in `Authorization`: a request
+/// sent from `refresh` already never triggers a refresh, as described below.
+///
 /// `refresh` may send its request through the client this interceptor belongs to: a request sent
 /// while refreshing carries the rejected credential and is never retried, so a `401` on it is
 /// returned to `refresh` as received instead of waiting for the refresh it belongs to. That holds
@@ -61,6 +75,8 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     private let isRejected: @Sendable (RetryContext) -> Bool
     /// The lowercased hosts that receive the credential; `nil` for every host.
     private let hosts: Set<String>?
+    /// The endpoints that never receive the credential nor trigger a refresh.
+    private let excluded: [any HTTPRequest]
 
     /// Creates an interceptor.
     ///
@@ -69,6 +85,9 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     ///   - hosts: The only hosts that receive the credential, matched exactly and case-insensitively.
     ///     A `401` from any other host is not treated as an expired credential. `nil`, the
     ///     default, sends the credential to every host.
+    ///   - excluding: The endpoints that never receive the credential, never wait for a refresh,
+    ///     and whose `401` never refreshes it, such as sign-in, sign-up and refresh. Matched on the
+    ///     host, port and path of their ``HTTPRequest/requestURL``. Empty by default.
     ///   - isExpired: Whether a credential is known to be expired. It is checked before every request
     ///     and must be cheap and free of side effects. Never expired by default.
     ///   - isRejected: Whether a failed attempt means the server refused the credential. Any `401`
@@ -78,6 +97,7 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     public init(
         credential: Credential,
         hosts: Set<String>? = nil,
+        excluding: [any HTTPRequest] = [],
         isExpired: @escaping @Sendable (Credential) -> Bool = { _ in false },
         isRejected: @escaping @Sendable (RetryContext) -> Bool = { $0.statusCode == 401 },
         apply: @escaping @Sendable (Credential, inout URLRequest) -> Void,
@@ -88,6 +108,7 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
         self.isExpired = isExpired
         self.isRejected = isRejected
         self.hosts = hosts.map { Set($0.map { $0.lowercased() }) }
+        self.excluded = excluding
     }
 
     /// Asynchronously replaces the current credential, for example after a login or a logout.
@@ -108,14 +129,14 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     ///
     /// - Parameter urlRequest: The request about to be sent.
     /// - Returns: The request carrying the current credential; unchanged when its host is not
-    ///   one of the interceptor's hosts, or when it already has an `Authorization` header of its
-    ///   own, such as HTTP Basic on a login call, that the credential would replace. A `401` for
-    ///   such a request is returned as received and never refreshes the credential, even while a
-    ///   refresh is running. A credential that writes another header, such as an API key, is
-    ///   still applied.
+    ///   one of the interceptor's hosts, when it targets an excluded endpoint, or when it already
+    ///   has an `Authorization` header of its own, such as HTTP Basic on a login call, that the
+    ///   credential would replace. A `401` for such a request is returned as received and never
+    ///   refreshes the credential, even while a refresh is running. A credential that writes
+    ///   another header, such as an API key, is still applied.
     /// - Throws: The error of a refresh that was needed because the credential is expired.
     public func adapt(_ urlRequest: URLRequest) async throws -> URLRequest {
-        guard isInScope(urlRequest) else {
+        guard isInScope(urlRequest), isExcluded(urlRequest) == false else {
             return urlRequest
         }
         if await replacesOwnAuthorization(of: urlRequest) {
@@ -135,16 +156,20 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     ///
     /// - Parameter context: The failed attempt.
     /// - Returns: ``RetryDecision/retry`` once the credential is fresh; ``RetryDecision/doNotRetry``
-    ///   for a response ``init(credential:hosts:isExpired:isRejected:apply:refresh:)``'s `isRejected`
-    ///   does not accept, for a request already retried or sent to a host outside the
-    ///   interceptor's hosts, when the refresh fails, or when ``setCredential(_:)`` replaced the
-    ///   credential while the refresh ran.
+    ///   for a response ``init(credential:hosts:excluding:isExpired:isRejected:apply:refresh:)``'s
+    ///   `isRejected` does not accept, for a request already retried, sent to a host outside the
+    ///   interceptor's hosts or to an excluded endpoint, when the refresh fails, or when
+    ///   ``setCredential(_:)`` replaced the credential while the refresh ran.
     public func retry(_ context: RetryContext) async -> RetryDecision {
         // A request sent by this interceptor's own refresh must not wait for that refresh.
         guard RefreshScope.active.contains(state.id) == false else {
             return .doNotRetry
         }
-        guard context.retryCount == 0, isInScope(context.request), isRejected(context) else {
+        guard context.retryCount == 0,
+              isInScope(context.request),
+              isExcluded(context.request) == false,
+              isRejected(context)
+        else {
             return .doNotRetry
         }
 
@@ -189,6 +214,34 @@ private extension AuthenticationInterceptor {
         }
         return hosts.contains(host)
     }
+
+    /// Whether `request` targets an excluded endpoint, on the host, port and path of its URL.
+    ///
+    /// Each endpoint's URL is resolved on every call, so a base URL that switches environment at
+    /// runtime is followed. An endpoint whose URL cannot be built is skipped.
+    func isExcluded(_ request: URLRequest) -> Bool {
+        guard excluded.isEmpty == false, let url = request.url else {
+            return false
+        }
+        let target = matchKey(of: url)
+        return excluded.contains { endpoint in
+            guard let endpointURL = try? endpoint.requestURL else {
+                return false
+            }
+            return matchKey(of: endpointURL) == target
+        }
+    }
+
+    /// The parts of a URL an excluded endpoint is matched on: lowercased host, port, and path
+    /// without trailing slashes. The port is compared as written, so `https://h` and
+    /// `https://h:443` differ; both sides normally come from the same `requestURL`.
+    func matchKey(of url: URL) -> (host: String?, port: Int?, path: String) {
+        var path = url.path(percentEncoded: false)
+        while path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return (url.host(percentEncoded: false)?.lowercased(), url.port, path)
+    }
 }
 
 extension AuthenticationInterceptor where Credential == String {
@@ -198,15 +251,19 @@ extension AuthenticationInterceptor where Credential == String {
     ///   - bearerToken: The token to start with.
     ///   - hosts: The only hosts that receive the token, matched exactly and case-insensitively.
     ///     `nil`, the default, sends it to every host.
+    ///   - excluding: The endpoints that never receive the token, never wait for a refresh, and
+    ///     whose `401` never refreshes it, such as sign-in, sign-up and refresh. Empty by default.
     ///   - refresh: Returns a new token, given the one that was rejected.
     public convenience init(
         bearerToken: String,
         hosts: Set<String>? = nil,
+        excluding: [any HTTPRequest] = [],
         refresh: @escaping @Sendable (String) async throws -> String
     ) {
         self.init(
             credential: bearerToken,
             hosts: hosts,
+            excluding: excluding,
             apply: { token, request in
                 request.setValue(HTTPHeader.authorization(bearerToken: token).value, forHTTPHeaderField: "Authorization")
             },

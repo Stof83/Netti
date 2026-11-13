@@ -309,6 +309,16 @@ To compute a pin in code instead, pass the certificate's DER bytes to `ServerTru
 
 To pin the DER certificates in your app bundle instead, use `ServerTrustPolicy(["*.example.com": .pinnedCertificates()])`.
 
+To keep a host out of pinning, such as a third-party API or presigned storage URLs, map it to `.default`: the system chain and host-name validation still apply, but there is no pin. An exact entry also carves a subdomain out of a wildcard pin. Exclusions are per host, never per path, because trust is evaluated once per TLS connection and reused across paths.
+
+```swift
+let pins = ServerTrustPolicy([
+    "*.example.com": .publicKeys(["<primary SPKI SHA-256>", "<backup SPKI SHA-256>"]),
+    "status.example.com": .default,
+    "maps.googleapis.com": .default
+])
+```
+
 A host with no entry is rejected, because `allHostsMustBeEvaluated` defaults to `true`. A pinned host with fewer than two pins logs a warning. The policy also applies to WebSocket handshakes. When pinning rejects a host, the request throws `.serverTrustEvaluationFailed(host:reason:)`.
 
 A pinned certificate locks users out once it expires. The policy logs a warning for each one that is expired or expires within 30 days, and you can check at launch:
@@ -355,6 +365,14 @@ However many requests are in flight, the token is refreshed once, and each reque
 Call `await auth.setCredential(_:)` on login, logout or an account switch; it supersedes a refresh in flight. The refresh closure can send its request through the same client: a `401` on that request is returned to the closure instead of waiting for the refresh. For a credential other than a bearer token, use `AuthenticationInterceptor(credential:isExpired:apply:refresh:)`.
 
 A request that already has its own `Authorization` header, such as HTTP Basic on a login call to the same host, is sent as it is, and a `401` for it never triggers a refresh.
+
+Sign-in, sign-up and refresh endpoints answer `401` for bad credentials, not for an expired session, so exclude them with `excluding:`, which every initializer takes:
+
+```swift
+AuthenticationInterceptor(token: token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { expired in try await authAPI.refresh(using: expired.refreshToken) }
+```
+
+An excluded request carries no token, never waits for a refresh, and its `401` is returned as received. A request matches an excluded endpoint on the host, port and path of its `requestURL`; the scheme, query and HTTP method are ignored. Don't exclude a refresh endpoint that expects the expired token in `Authorization`: a request sent from the refresh closure already never triggers a refresh.
 
 `RetryPolicy()` retries up to twice, and only idempotent methods or requests carrying an `Idempotency-Key` (add `.idempotencyKey` to `interceptors`). It retries after transient connection errors or a `408`, `429`, `500`, `502`, `503` or `504` response, with jittered exponential backoff from 0.5 s. It honours `Retry-After` up to 60 s; a longer wait isn't retried.
 

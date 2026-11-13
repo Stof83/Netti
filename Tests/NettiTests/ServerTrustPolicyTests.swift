@@ -58,6 +58,20 @@ struct ServerTrustPolicyTests {
         try policy.evaluate(try TrustFixtures.trust([.p256]), forHost: host)
     }
 
+    @Test("given an exact host mapped to default under a wildcard pin, when looked up, then the host is excluded from pinning")
+    func evaluator_exactDefaultEntry_excludesHostFromWildcardPin() throws {
+        let policy = ServerTrustPolicy([
+            "*.example.com": .publicKeys(mismatchingPins),
+            "status.example.com": .default,
+        ])
+
+        let excluded = try #require(policy.evaluator(forHost: "status.example.com"))
+        let pinned = try #require(policy.evaluator(forHost: "api.example.com"))
+
+        #expect(excluded.pinCounts.isEmpty)
+        #expect(pinned.pinCounts == [mismatchingPins.count])
+    }
+
     @Test(
         "given a wildcard entry, when the host is the apex or a deeper subdomain, then it does not match",
         arguments: ["example.com", "a.api.example.com", "apiexample.com", "api.example.com.evil.net"]

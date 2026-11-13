@@ -91,7 +91,7 @@ await auth.setCredential(AuthToken(accessToken: "bob-token", expiresIn: .seconds
 
 The refresh closure may send its request through the same client without deadlocking: a `401` on that request comes back to the closure. This doesn't hold for requests sent from `Task.detached`.
 
-For a credential other than a bearer token, use `AuthenticationInterceptor(credential:hosts:isExpired:isRejected:apply:refresh:)`, where `isExpired` decides when to refresh before sending.
+For a credential other than a bearer token, use `AuthenticationInterceptor(credential:hosts:excluding:isExpired:isRejected:apply:refresh:)`, where `isExpired` decides when to refresh before sending.
 
 ## Certificate pinning and expiry
 

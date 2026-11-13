@@ -32,6 +32,38 @@ import Security
 /// is created: without a backup pin, rotating the key locks users out. A pinned certificate that
 /// is expired or expires within 30 days logs one too; ``pinnedCertificatesExpiring(within:asOf:)``
 /// lists them so the app can report them its own way.
+///
+/// ## Excluding a host
+///
+/// To keep a host out of pinning, map it to ``ServerTrustEvaluator/default``. It gets the standard
+/// system chain and host-name validation, and no pin.
+///
+/// ```swift
+/// let policy = ServerTrustPolicy([
+///     "*.example.com": .publicKeys(["hashA=", "hashB="]),
+///     "status.example.com": .default,      // vendor-hosted: an exact entry beats the wildcard
+///     "maps.googleapis.com": .default      // third-party API: not ours to pin
+/// ])
+/// ```
+///
+/// Exclude a host when:
+/// - It is a third-party API called through Netti whose certificates you do not control. Pinning it
+///   breaks the day the vendor rotates.
+/// - It serves presigned storage or CDN URLs, including redirect targets of your own API.
+/// - It is a subdomain you want to carve out of a wildcard pin. An exact entry beats the wildcard.
+///
+/// SDKs that use their own `URLSession` are not affected by this policy.
+///
+/// An excluded host still fails on an invalid or untrusted certificate: `.default` is not
+/// `.disabled`, which exists only in `DEBUG` builds, for example to inspect traffic through a
+/// debugging proxy.
+///
+/// An exclusion is per host, never per path. Trust is evaluated once per TLS connection, and
+/// `URLSession` reuses that connection for every path on the host. A per-path exception would
+/// either be ignored or leave the whole host unpinned.
+///
+/// Alternatively, pass `allHostsMustBeEvaluated: false` to give every unlisted host default
+/// validation. Listing the excluded hosts explicitly keeps the fail-closed default.
 public struct ServerTrustPolicy: ServerTrustEvaluating {
 
     // MARK: - Constants
