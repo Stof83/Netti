@@ -42,7 +42,7 @@ let csv: Data? = try await netti.get(UserAPI.users).rawData
 
 ### Send a query
 
-Query keys follow the client's ``JSONManager`` key strategy, `snake_case` by default, like body keys. Everything else uses the ``URLEncodedFormEncoder`` defaults: arrays without brackets (`id=1&id=2`), bools as `true`/`false`, dates as `yyyy-MM-dd'T'HH:mm:ss.SSSZ` (the ``JSONManager`` default), keys sorted, and RFC 3986 escaping (`+` included). Query items already in the endpoint's URL are kept.
+Query keys follow the client's ``JSONManager`` key strategy, `snake_case` by default, like body keys. Everything else uses the ``URLEncodedFormEncoder`` defaults: arrays without brackets (`id=1&id=2`), bools as `true`/`false`, dates as `yyyy-MM-dd'T'HH:mm:ss.SSSZ` (the ``JSONManager`` default, since 3.3.0; earlier versions used ISO 8601), keys sorted, and RFC 3986 escaping (`+` included). Query items already in the endpoint's URL are kept. For ISO 8601 or another format, see <doc:MakingRequests#Send-a-prebuilt-request>.
 
 ```swift
 struct UserFilter: Encodable, Sendable {

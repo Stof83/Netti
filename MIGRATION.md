@@ -1,13 +1,36 @@
-# Migrating to Netti 3.0
+# Migrating Netti
 
-Netti 2.0 and 3.0 break source compatibility on purpose. This guide covers four paths:
+Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 changes the default query-date format. This guide covers five paths:
 
+- [Netti 3.2 to 3.3](#netti-32-to-33): query dates use a different format, check your servers
 - [Netti 3.0 to 3.1](#netti-30-to-31): additive, nothing to change
 - [Netti 2.x to 3.0](#netti-2x-to-30): the Alamofire engine and the Alamofire dependency are removed
 - [Netti 1.x to 2.0](#netti-1x-to-20): a one-to-one API mapping, then every breaking change with before and after code
 - [Alamofire to Netti](#alamofire-to-netti): concept mapping for code that calls Alamofire directly
 
 To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from: "1.5.0")`, which never resolves to 2.x.
+
+## Netti 3.2 to 3.3
+
+3.3 changes one default. Raise the requirement to `from: "3.3.1"` and check every `GET`, `HEAD` or `DELETE` request, and every `buildRequest` call, that sends a `Date` in its query.
+
+- **Query dates use the `JSONManager` format.** `get`, `head`, `delete` and `buildRequest` now write `Date` values in query strings as `yyyy-MM-dd'T'HH:mm:ss.SSSZ` in the current time zone, for example `2026-10-27T11:00:00.000+0100`, instead of ISO 8601 (`2026-10-27T10:00:00Z`). Query dates now match body dates, as in 1.x. Nothing in your code changes, but a server that parses the old format may reject or misread the new one. Body encoding is unchanged.
+
+To keep ISO 8601 for a request, send the query through a prebuilt request. `send(_:)` skips the cache and `sampleData`, so use it only for requests that need ISO 8601. Set `keyEncoding` as well: a bare `URLEncodedFormEncoder` keeps keys as declared, while the verbs apply the client's `JSONManager` key strategy, so a prebuilt request loses snake_case unless you set it:
+
+```swift
+struct Filter: Encodable, Sendable {
+    let pageNumber: Int
+    let createdAfter: Date
+}
+
+let iso = URLEncodedFormParameterEncoder(encoder: URLEncodedFormEncoder(dateEncoding: .iso8601, keyEncoding: .convertToSnakeCase))
+let request = try iso.encode(Filter(pageNumber: 2, createdAfter: date), into: UserAPI.users.asURLRequest(for: .get))
+let users: [User]? = try await netti.send(request).data
+// GET https://api.example.com/v1/users?created_after=2026-10-27T10%3A00%3A00Z&page_number=2
+```
+
+Any other format works the same way, with `dateEncoding: .formatted(_:)`. A custom `JSONManager` date format is still not applied to queries.
 
 ## Netti 3.0 to 3.1
 
@@ -173,7 +196,7 @@ struct User: Decodable, Sendable { let id: Int }
 
 #### Query keys follow `JSONManager`; dates are ISO 8601
 
-In 1.x, every parameter object went through `JSONManager`'s encoder into a dictionary, so query keys and dates were written like JSON bodies. In 2.0, `get`, `head`, `delete` and `buildRequest` encode queries with `URLEncodedFormEncoder`. Keys still follow the client's `JSONManager` key strategy, so with the default `JSONManager()`, `pageNumber` is sent as `page_number`, as in 1.x. Dates are now ISO 8601 instead of `JSONManager`'s date format. JSON bodies still use `JSONManager` for both.
+In 1.x, every parameter object went through `JSONManager`'s encoder into a dictionary, so query keys and dates were written like JSON bodies. In 2.0, `get`, `head`, `delete` and `buildRequest` encode queries with `URLEncodedFormEncoder`. Keys still follow the client's `JSONManager` key strategy, so with the default `JSONManager()`, `pageNumber` is sent as `page_number`, as in 1.x. Dates are now ISO 8601 instead of `JSONManager`'s date format. Netti 3.3 changed query dates back to `JSONManager`'s format; see [Netti 3.2 to 3.3](#netti-32-to-33). JSON bodies still use `JSONManager` for both.
 
 | Encodable `Filter(pageNumber: 2, createdAfter: date)` | 1.x | 2.0 |
 |---|---|---|

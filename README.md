@@ -154,7 +154,7 @@ The rendered API reference is hosted on Swift Package Index at <https://swiftpac
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Stof83/Netti.git", from: "3.1.0")
+    .package(url: "https://github.com/Stof83/Netti.git", from: "3.3.1")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Netti", package: "Netti")]),
@@ -166,7 +166,7 @@ targets: [
 
 1. Choose File › Add Package Dependencies…
 2. Paste `https://github.com/Stof83/Netti.git`.
-3. Set the dependency rule to "Up to Next Major Version" from 3.1.0.
+3. Set the dependency rule to "Up to Next Major Version" from 3.3.1.
 4. Add the `Netti` product to the app target and `NettiTesting` to the test target.
 
 ## Usage
@@ -219,7 +219,7 @@ try await netti.delete(UserAPI.user(42))
 let status = try await netti.head(UserAPI.user(42)).statusCode
 ```
 
-`GET`, `HEAD` and `DELETE` put `query` in the URL. `POST`, `PUT` and `PATCH` send `body` as JSON, encoded with the client's `JSONManager`. Query and body keys both follow the `JSONManager` key strategy, snake_case by default, so `pageNumber` is sent as `page_number`. Query dates use the `JSONManager` default format, `yyyy-MM-dd'T'HH:mm:ss.SSSZ`. When you don't annotate a response type, the call returns `HTTPResponse<Empty>` and ignores the body.
+`GET`, `HEAD` and `DELETE` put `query` in the URL. `POST`, `PUT` and `PATCH` send `body` as JSON, encoded with the client's `JSONManager`. Query and body keys both follow the `JSONManager` key strategy, snake_case by default, so `pageNumber` is sent as `page_number`. Query dates use the `JSONManager` default format, `yyyy-MM-dd'T'HH:mm:ss.SSSZ`, since 3.3.0; earlier versions sent ISO 8601. To keep ISO 8601, see [Netti 3.2 to 3.3](MIGRATION.md#netti-32-to-33). When you don't annotate a response type, the call returns `HTTPResponse<Empty>` and ignores the body.
 
 `HTTPResponse.data` is optional. A 2xx body that fails to decode throws `.decodingFailed`, so on success `data` is set. Non-2xx responses are returned, not thrown, unless validation is on. Their `data` is `nil` when the body doesn't decode as the requested type, and `statusCode` and `rawData` are always available:
 
