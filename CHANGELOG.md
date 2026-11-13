@@ -4,6 +4,12 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.1] - 2026-11-13
+
+### Documentation
+
+- document query-date default change and pin 3.3.1 (a317172)
+
 ## [3.3.0] - 2026-11-13
 
 ### BREAKING CHANGES
