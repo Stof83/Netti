@@ -4,6 +4,16 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.0] - 2026-11-13
+
+### BREAKING CHANGES
+
+- **encoding**: default query dates to JSONManager format (e416980)
+
+### Fixed
+
+- **encoding**: default query dates to JSONManager format (e416980)
+
 ## [3.2.0] - 2026-11-13
 
 ### Added
