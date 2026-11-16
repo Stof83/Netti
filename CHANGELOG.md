@@ -4,15 +4,20 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [3.4.0] - 2026-11-16
+
+### BREAKING CHANGES
+
+- **sample-data**: serve endpoint samples only when the client opts in (aa071b1)
 
 ### Added
 
-- **authentication**: add requiresAuthentication so an endpoint can opt out of AuthenticationInterceptor
+- **sample-data**: serve endpoint samples only when the client opts in (aa071b1)
+- **authentication**: let endpoints opt out of AuthenticationInterceptor (574f806)
 
 ### Documentation
 
-- **authentication**: document requiresAuthentication and pin 3.4.0
+- **authentication**: document requiresAuthentication and pin 3.4.0 (df7e22a)
 
 ## [3.3.1] - 2026-11-13
 
