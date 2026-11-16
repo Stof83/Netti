@@ -10,6 +10,10 @@ this module adheres to [Semantic Versioning](https://semver.org/).
 
 - **authentication**: add requiresAuthentication so an endpoint can opt out of AuthenticationInterceptor
 
+### Documentation
+
+- **authentication**: document requiresAuthentication and pin 3.4.0
+
 ## [3.3.1] - 2026-11-13
 
 ### Documentation

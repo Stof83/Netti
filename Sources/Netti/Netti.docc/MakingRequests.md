@@ -79,6 +79,7 @@ For headers every request needs, such as a token, use an interceptor instead; se
 - ``HTTPRequest/timeoutInterval``: 60 seconds by default.
 - ``HTTPRequest/sampleData``: when set, the verbs decode it in place of sending the request, which helps with previews and prototypes.
 - ``HTTPRequest/cachePolicy``, ``HTTPRequest/validation`` and ``HTTPRequest/retryPolicy``: see <doc:CachingAndOffline>, <doc:ValidationAndErrors> and <doc:InterceptorsAndRetry>.
+- ``HTTPRequest/requiresAuthentication``: `false` keeps ``AuthenticationInterceptor`` off a sign-in, sign-up or refresh endpoint; see <doc:InterceptorsAndRetry>.
 
 ### Send a prebuilt request
 

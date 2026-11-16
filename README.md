@@ -154,7 +154,7 @@ The rendered API reference is hosted on Swift Package Index at <https://swiftpac
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Stof83/Netti.git", from: "3.3.1")
+    .package(url: "https://github.com/Stof83/Netti.git", from: "3.4.0")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Netti", package: "Netti")]),
@@ -166,7 +166,7 @@ targets: [
 
 1. Choose File › Add Package Dependencies…
 2. Paste `https://github.com/Stof83/Netti.git`.
-3. Set the dependency rule to "Up to Next Major Version" from 3.3.1.
+3. Set the dependency rule to "Up to Next Major Version" from 3.4.0.
 4. Add the `Netti` product to the app target and `NettiTesting` to the test target.
 
 ## Usage
@@ -366,13 +366,23 @@ Call `await auth.setCredential(_:)` on login, logout or an account switch; it su
 
 A request that already has its own `Authorization` header, such as HTTP Basic on a login call to the same host, is sent as it is, and a `401` for it never triggers a refresh.
 
-Sign-in, sign-up and refresh endpoints answer `401` for bad credentials, not for an expired session, so exclude them with `excluding:`, which every initializer takes:
+Sign-in, sign-up and refresh endpoints answer `401` for bad credentials, not for an expired session. The endpoint opts out itself, in its own module, so this works even when the enum is internal to a feature module the app can't see:
+
+```swift
+enum AuthAPI: HTTPRequest {
+    case signIn, signUp, refresh, profile
+    // ...
+    var requiresAuthentication: Bool { self == .profile }
+}
+```
+
+When the app can name the endpoints, it can list them with `excluding:` instead, which every initializer takes:
 
 ```swift
 AuthenticationInterceptor(token: token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { expired in try await authAPI.refresh(using: expired.refreshToken) }
 ```
 
-An excluded request carries no token, never waits for a refresh, and its `401` is returned as received. A request matches an excluded endpoint on the host, port and path of its `requestURL`; the scheme, query and HTTP method are ignored. Don't exclude a refresh endpoint that expects the expired token in `Authorization`: a request sent from the refresh closure already never triggers a refresh.
+Either one is enough. An opted-out or excluded request carries no token, never waits for a refresh, and its `401` is returned as received. `requiresAuthentication` applies to requests sent from an endpoint; a prebuilt `URLRequest` sent with `send(_:)` is matched by `excluding:` only. A request matches an excluded endpoint on the host, port and path of its `requestURL`; the scheme, query and HTTP method are ignored. Don't exclude or opt out a refresh endpoint that expects the expired token in `Authorization`: a request sent from the refresh closure already never triggers a refresh.
 
 `RetryPolicy()` retries up to twice, and only idempotent methods or requests carrying an `Idempotency-Key` (add `.idempotencyKey` to `interceptors`). It retries after transient connection errors or a `408`, `429`, `500`, `502`, `503` or `504` response, with jittered exponential backoff from 0.5 s. It honours `Retry-After` up to 60 s; a longer wait isn't retried.
 

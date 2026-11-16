@@ -1,7 +1,8 @@
 # Migrating Netti
 
-Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 changes the default query-date format. This guide covers five paths:
+Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 changes the default query-date format. This guide covers six paths:
 
+- [Netti 3.3 to 3.4](#netti-33-to-34): additive, nothing to change
 - [Netti 3.2 to 3.3](#netti-32-to-33): query dates use a different format, check your servers
 - [Netti 3.0 to 3.1](#netti-30-to-31): additive, nothing to change
 - [Netti 2.x to 3.0](#netti-2x-to-30): the Alamofire engine and the Alamofire dependency are removed
@@ -9,6 +10,30 @@ Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 changes the def
 - [Alamofire to Netti](#alamofire-to-netti): concept mapping for code that calls Alamofire directly
 
 To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from: "1.5.0")`, which never resolves to 2.x.
+
+## Netti 3.3 to 3.4
+
+3.4 only adds API, so raise the requirement to `from: "3.4.0"` and rebuild. Every 3.3 call keeps its behavior, unless an endpoint already declares a property with the same name (see the end of this section).
+
+- **`HTTPRequest.requiresAuthentication`**, `true` by default. An endpoint that returns `false` is kept out of `AuthenticationInterceptor`: it carries no credential, never waits for a refresh, and its `401` never refreshes. It is declared on the endpoint, so a feature module can opt out its sign-in, sign-up and refresh endpoints without the app naming them.
+
+`excluding:` is unchanged. To move a module's endpoints off the app's `excluding:` list, add the property to the module's enum and drop the endpoints from the list:
+
+```swift
+// Before, in the app
+AuthenticationInterceptor(token: token, excluding: AuthModule.publicEndpoints) { expired in try await authAPI.refresh(using: expired.refreshToken) }
+
+// After, in the module
+enum AuthAPI: HTTPRequest {
+    // ...
+    var requiresAuthentication: Bool { self == .profile }
+}
+
+// After, in the app
+AuthenticationInterceptor(token: token) { expired in try await authAPI.refresh(using: expired.refreshToken) }
+```
+
+Check your endpoints for a property already named `requiresAuthentication`. A `Bool` one now decides whether `AuthenticationInterceptor` signs the endpoint: where it returns `false`, the endpoint is sent unsigned. One of another type leaves the default in place, but may make uses of the name ambiguous; rename it.
 
 ## Netti 3.2 to 3.3
 

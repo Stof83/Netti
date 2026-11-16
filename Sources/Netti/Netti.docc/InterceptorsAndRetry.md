@@ -102,7 +102,19 @@ struct LoginAPI: HTTPRequest {
 
 Every attempt adapts the original request, so a header found on it was never the interceptor's. The rule holds for every credential type, not only bearer tokens.
 
-Sign-in, sign-up and refresh endpoints answer `401` for bad credentials, not for an expired session. List them in `excluding`, which every initializer takes: an excluded request carries no token, never waits for a refresh, and its `401` is returned as received.
+Sign-in, sign-up and refresh endpoints answer `401` for bad credentials, not for an expired session. Such a request must carry no token, never wait for a refresh, and have its `401` returned as received. Mark it in either of two ways.
+
+The endpoint opts out itself with ``HTTPRequest/requiresAuthentication``. Its own module declares it, so the app builds the interceptor with no list, even when the enum is internal to a feature module the app can't see:
+
+```swift
+enum AuthAPI: HTTPRequest {
+    case signIn, signUp, refresh, profile
+    // ...
+    var requiresAuthentication: Bool { self == .profile }
+}
+```
+
+When the app can name the endpoints, it lists them in `excluding`, which every initializer takes:
 
 ```swift
 AuthenticationInterceptor(token: session.token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { expired in
@@ -110,7 +122,7 @@ AuthenticationInterceptor(token: session.token, excluding: [AuthAPI.signIn, Auth
 }
 ```
 
-A request matches an excluded endpoint on the host, port and path of its ``HTTPRequest/requestURL``; the scheme, query and HTTP method are ignored. Don't exclude a refresh endpoint that expects the expired token in `Authorization`: a request sent from the refresh closure already never triggers a refresh.
+``HTTPRequest/requiresAuthentication`` applies to requests sent from an endpoint; a prebuilt `URLRequest` sent with `send(_:)` is matched by `excluding` only. A request matches an excluded endpoint on the host, port and path of its ``HTTPRequest/requestURL``; the scheme, query and HTTP method are ignored. Don't exclude or opt out a refresh endpoint that expects the expired token in `Authorization`: a request sent from the refresh closure already never triggers a refresh.
 
 After a login, a logout or an account switch, replace the token with ``AuthenticationInterceptor/setCredential(_:)``. A refresh in flight is superseded: its result is discarded, so the previous session's renewal never overwrites the token you set, and the requests waiting for it after a rejection return their response as received.
 
@@ -132,7 +144,7 @@ let auth = AuthenticationInterceptor(
 
 ``AuthenticationInterceptor/init(credential:hosts:excluding:isExpired:isRejected:apply:refresh:)`` checks `isExpired` before every request; it must be cheap and free of side effects. ``AuthenticationInterceptor/init(bearerToken:hosts:excluding:refresh:)`` takes a plain `String` token with no expiry date.
 
-`Examples/Authentication.swift` runs each case offline: an expired token, a backend body code, twenty parallel requests sharing one refresh, and login and logout. Run it with `swift run NettiExamples`; `EXAMPLES.md` at the root of the repository walks through it.
+`Examples/Authentication.swift` runs each case offline: an expired token, a backend body code, twenty parallel requests sharing one refresh, login and logout, and a sign-in endpoint that opts out. Run it with `swift run NettiExamples`; `EXAMPLES.md` at the root of the repository walks through it.
 
 ### Retry transient failures
 

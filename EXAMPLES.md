@@ -14,7 +14,7 @@ The command prints what each example does and exits non-zero if any of them fail
 | Configuration | [Configuration.swift](Examples/Configuration.swift) | Every client setting: the JSON coder, interceptors, retry, validation, monitors, logging, connectivity, deduplication, cache size and the engine's own options |
 | Upload | [UploadAndMultipart.swift](Examples/UploadAndMultipart.swift) | Uploading in-memory data, a file and a multipart form, with progress |
 | Download | [DownloadAndResume.swift](Examples/DownloadAndResume.swift) | Downloading to a file, then resuming a download that failed halfway |
-| Token refresh | [Authentication.swift](Examples/Authentication.swift) | Refreshing an expired token before sending, refreshing on a backend `TOKEN_EXPIRED` code, 20 parallel requests that share one refresh, and login, account switch and logout |
+| Token refresh | [Authentication.swift](Examples/Authentication.swift) | Refreshing an expired token before sending, refreshing on a backend `TOKEN_EXPIRED` code, 20 parallel requests that share one refresh, login, account switch and logout, and a sign-in endpoint from another module that opts out |
 | Interceptors and retry | [InterceptorsAndRetry.swift](Examples/InterceptorsAndRetry.swift) | Adapting every request, retrying transient failures, a custom retrier and a per-endpoint override |
 | Validation and errors | [ValidationAndErrors.swift](Examples/ValidationAndErrors.swift) | Turning validation on, custom rules, a per-endpoint override, and catching each kind of error |
 | Caching | [CachingAndOffline.swift](Examples/CachingAndOffline.swift) | An endpoint that caches, served from disk while offline, read first for an instant UI, and invalidated |
@@ -90,6 +90,18 @@ await auth.setCredential(AuthToken(accessToken: "bob-token", expiresIn: .seconds
 ```
 
 The refresh closure may send its request through the same client without deadlocking: a `401` on that request comes back to the closure. This doesn't hold for requests sent from `Task.detached`.
+
+**Sign-in from another module** ([`signInFromAnotherModuleExample`](Examples/Authentication.swift)). A wrong password answers `401`, which must not refresh the session. The sign-in endpoint lives in a feature module the app can't see, so it opts out itself and the app builds the interceptor with no list:
+
+```swift
+enum SignInAPI: HTTPRequest {
+    case signIn
+    // ...
+    var requiresAuthentication: Bool { false }
+}
+```
+
+The sign-in request goes out with no token and its `401` reaches the caller, while `UserAPI` keeps the token. When the app can name the endpoints, `excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]` does the same from the interceptor.
 
 For a credential other than a bearer token, use `AuthenticationInterceptor(credential:hosts:excluding:isExpired:isRejected:apply:refresh:)`, where `isExpired` decides when to refresh before sending.
 
