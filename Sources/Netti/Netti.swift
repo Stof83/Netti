@@ -336,7 +336,13 @@ extension Netti {
             return response
         }
 
-        let response = try await snapshot.pipeline.data(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy, progress: progress)
+        let response = try await snapshot.pipeline.data(
+            urlRequest,
+            validation: endpoint.validation,
+            retryPolicy: endpoint.retryPolicy,
+            requiresAuthentication: endpoint.requiresAuthentication,
+            progress: progress
+        )
         if cachePolicy.isCaching, let statusCode = response.statusCode, (200..<300).contains(statusCode), let rawData = response.rawData {
             // Awaited, so the entry is readable as soon as this call returns.
             try? await cacheStore.write(rawData, key: urlRequest.cacheKey)

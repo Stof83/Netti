@@ -10,7 +10,7 @@ import NettiTesting
 // it runs when the token's date has passed (before sending) and when the server rejects it
 // (after sending), and however many requests hit either case at once, it runs once.
 
-/// Runs the four authentication scenarios in order.
+/// Runs the five authentication scenarios in order.
 ///
 /// Runs offline: a stub engine answers `200` only for the token the server currently accepts and
 /// `401` for every other one.
@@ -19,6 +19,7 @@ func authenticationExample() async throws {
     try await refreshOnRejectionBodyExample()
     try await parallelRequestsShareOneRefreshExample()
     try await loginAndLogoutExample()
+    try await signInFromAnotherModuleExample()
 }
 
 // MARK: - a) Expired by date
@@ -136,6 +137,42 @@ func loginAndLogoutExample() async throws {
     let afterLogout = try await netti.get(UserAPI.user(1)).statusCode
     report("d) login/logout    -> alice \(asAlice ?? 0), bob \(asBob ?? 0), after logout \(afterLogout ?? 0)")
     try expect(asAlice == 200 && asBob == 200 && afterLogout == 401, "unexpected statuses after setCredential")
+}
+
+// MARK: - e) Sign-in from another module
+
+/// A sign-in endpoint declared in a feature module the app cannot see. It opts out of the
+/// interceptor itself, so the app builds the interceptor with no list of endpoints.
+private enum SignInAPI: HTTPRequest {
+    case signIn
+
+    var baseURL: URL? { URL(string: "https://api.example.com") }
+    var basePath: String { "v1" }
+    var path: String { "auth/signin" }
+    var headers: HTTPHeaders { [.contentType("application/json")] }
+
+    /// A `401` here means a wrong password, not an expired session.
+    var requiresAuthentication: Bool { false }
+}
+
+/// A wrong password answers `401`. The sign-in request carries no token, and its `401` reaches the
+/// caller without a refresh, while other endpoints keep the token.
+func signInFromAnotherModuleExample() async throws {
+    let refreshes = Counter()
+    let service = tokenServer(accepting: ["session-token"])
+    let auth = AuthenticationInterceptor(token: AuthToken(accessToken: "session-token", expiresIn: .seconds(3600))) { expired in
+        refreshes.increment()
+        return expired
+    }
+    let netti = makeClient(service, interceptors: [auth])
+
+    let signIn: HTTPResponse<Empty> = try await netti.post(SignInAPI.signIn, body: ["password": "wrong"])
+    let profile = try await netti.get(UserAPI.user(1))
+    let sentTokens = service.requests.map { $0.value(forHTTPHeaderField: "Authorization") ?? "none" }
+    report("e) sign-in opt-out -> sign-in \(signIn.statusCode ?? 0), profile \(profile.statusCode ?? 0), refreshes \(refreshes.value), server saw \(sentTokens)")
+    try expect(signIn.statusCode == 401 && profile.statusCode == 200, "unexpected statuses")
+    try expect(refreshes.value == 0, "a wrong password refreshed the token")
+    try expect(sentTokens == ["none", "Bearer session-token"], "the sign-in request carried the token: \(sentTokens)")
 }
 
 // MARK: - Helpers

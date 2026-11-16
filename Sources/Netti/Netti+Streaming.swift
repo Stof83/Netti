@@ -41,7 +41,13 @@ extension Netti {
     ) async throws(HTTPRequestError) -> HTTPStreamResponse {
         let snapshot = self.snapshot
         let urlRequest = try buildRequest(endpoint, parameters: query, method: .get, jsonManager: snapshot.jsonManager)
-        return try await stream(urlRequest, validation: endpoint.validation, retryPolicy: endpoint.retryPolicy, pipeline: snapshot.pipeline)
+        return try await stream(
+            urlRequest,
+            validation: endpoint.validation,
+            retryPolicy: endpoint.retryPolicy,
+            requiresAuthentication: endpoint.requiresAuthentication,
+            pipeline: snapshot.pipeline
+        )
     }
 
     /// Sends a prebuilt request and streams its body; use it for streams that need another method.
@@ -61,7 +67,7 @@ extension Netti {
     /// - Returns: The response, with its body still arriving.
     /// - Throws: ``HTTPRequestError``.
     public func stream(_ urlRequest: URLRequest) async throws(HTTPRequestError) -> HTTPStreamResponse {
-        try await stream(urlRequest, validation: nil, retryPolicy: nil, pipeline: snapshot.pipeline)
+        try await stream(urlRequest, validation: nil, retryPolicy: nil, requiresAuthentication: true, pipeline: snapshot.pipeline)
     }
 
     // MARK: - WebSocket
@@ -92,7 +98,7 @@ extension Netti {
         var urlRequest = try endpoint.asURLRequest(for: .get)
         urlRequest.url = urlRequest.url.map(Self.webSocketURL)
         let snapshot = self.snapshot
-        let transport = try await snapshot.pipeline.webSocket(urlRequest)
+        let transport = try await snapshot.pipeline.webSocket(urlRequest, requiresAuthentication: endpoint.requiresAuthentication)
         return WebSocketConnection(transport: transport, jsonManager: snapshot.jsonManager, pingInterval: pingInterval)
     }
 }
@@ -118,10 +124,16 @@ private extension Netti {
         _ urlRequest: URLRequest,
         validation: ResponseValidation?,
         retryPolicy: RetryPolicy?,
+        requiresAuthentication: Bool,
         pipeline: RequestPipeline
     ) async throws(HTTPRequestError) -> HTTPStreamResponse {
         let service = pipeline.service
-        return try await pipeline.run(urlRequest, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
+        return try await pipeline.run(
+            urlRequest,
+            validation: validation,
+            retryPolicy: retryPolicy,
+            requiresAuthentication: requiresAuthentication
+        ) { sent throws(HTTPRequestError) in
             let stream = try await service.bytes(for: sent)
             let response = HTTPResponse<Data>(request: stream.request, response: stream.response, data: nil, rawData: nil)
             return RequestPipeline.Attempt(output: stream, response: response)

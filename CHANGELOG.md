@@ -4,6 +4,12 @@ All notable changes to this module are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this module adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **authentication**: add requiresAuthentication so an endpoint can opt out of AuthenticationInterceptor
+
 ## [3.3.1] - 2026-11-13
 
 ### Documentation

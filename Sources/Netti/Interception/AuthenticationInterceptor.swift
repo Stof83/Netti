@@ -49,18 +49,34 @@ import Foundation
 /// AuthenticationInterceptor(bearerToken: token, hosts: ["api.example.com"]) { _ in try await api.refreshToken() }
 /// ```
 ///
-/// Pass `excluding` for the endpoints that sign in, sign up or refresh: a `401` from them means
-/// bad credentials, not an expired session. An excluded request carries no credential, never waits
-/// for a refresh, and its `401` never refreshes:
+/// The endpoints that sign in, sign up or refresh must not be signed: a `401` from them means bad
+/// credentials, not an expired session. Such a request carries no credential, never waits for a
+/// refresh, and its `401` never refreshes. Mark them in two ways:
 ///
-/// ```swift
-/// AuthenticationInterceptor(bearerToken: token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { _ in try await api.refreshToken() }
-/// ```
+/// - **On the endpoint**, with ``HTTPRequest/requiresAuthentication``. The endpoint's own module
+///   declares it, so it works when the enum is internal to a feature module the app cannot see:
+///
+///   ```swift
+///   enum AuthAPI: HTTPRequest {
+///       // ...
+///       var requiresAuthentication: Bool { false }
+///   }
+///   ```
+///
+/// - **On the interceptor**, with `excluding`, when the app can name the endpoints:
+///
+///   ```swift
+///   AuthenticationInterceptor(bearerToken: token, excluding: [AuthAPI.signIn, AuthAPI.signUp, AuthAPI.refresh]) { _ in try await api.refreshToken() }
+///   ```
+///
+/// Either one is enough. ``HTTPRequest/requiresAuthentication`` applies only to requests sent
+/// through a ``Netti`` client from an endpoint; a prebuilt `URLRequest` is matched by `excluding`
+/// alone.
 ///
 /// A request matches an excluded endpoint on the host, port and path of its
 /// ``HTTPRequest/requestURL``, resolved on every request; the scheme, query and HTTP method are
 /// ignored. An endpoint whose path depends on an associated value excludes only that path. Don't
-/// exclude a refresh endpoint that expects the expired credential in `Authorization`: a request
+/// exclude or opt out a refresh endpoint that expects the expired credential in `Authorization`: a request
 /// sent from `refresh` already never triggers a refresh, as described below.
 ///
 /// `refresh` may send its request through the client this interceptor belongs to: a request sent
@@ -87,7 +103,8 @@ public final class AuthenticationInterceptor<Credential: Sendable>: RequestInter
     ///     default, sends the credential to every host.
     ///   - excluding: The endpoints that never receive the credential, never wait for a refresh,
     ///     and whose `401` never refreshes it, such as sign-in, sign-up and refresh. Matched on the
-    ///     host, port and path of their ``HTTPRequest/requestURL``. Empty by default.
+    ///     host, port and path of their ``HTTPRequest/requestURL``. Empty by default. An endpoint
+    ///     can also opt out itself with ``HTTPRequest/requiresAuthentication``.
     ///   - isExpired: Whether a credential is known to be expired. It is checked before every request
     ///     and must be cheap and free of side effects. Never expired by default.
     ///   - isRejected: Whether a failed attempt means the server refused the credential. Any `401`
@@ -215,11 +232,15 @@ private extension AuthenticationInterceptor {
         return hosts.contains(host)
     }
 
-    /// Whether `request` targets an excluded endpoint, on the host, port and path of its URL.
+    /// Whether `request` belongs to an endpoint whose ``HTTPRequest/requiresAuthentication`` is
+    /// `false`, or targets an excluded endpoint, on the host, port and path of its URL.
     ///
-    /// Each endpoint's URL is resolved on every call, so a base URL that switches environment at
-    /// runtime is followed. An endpoint whose URL cannot be built is skipped.
+    /// Each excluded endpoint's URL is resolved on every call, so a base URL that switches
+    /// environment at runtime is followed. An endpoint whose URL cannot be built is skipped.
     func isExcluded(_ request: URLRequest) -> Bool {
+        guard EndpointScope.requiresAuthentication else {
+            return true
+        }
         guard excluded.isEmpty == false, let url = request.url else {
             return false
         }

@@ -53,6 +53,8 @@ struct RequestPipeline: Sendable {
     ///     the `Idempotency-Key` the first attempt was given.
     ///   - validation: The endpoint's validation, overriding the client's.
     ///   - retryPolicy: The endpoint's retry policy, overriding the client's.
+    ///   - requiresAuthentication: The endpoint's ``HTTPRequest/requiresAuthentication``, seen by
+    ///     interceptors while they adapt and retry it; `true` for a request with no endpoint.
     ///   - discard: Releases the output of an attempt that is not returned, such as a downloaded file.
     ///   - transport: Performs one attempt.
     /// - Returns: The output of the attempt that ends the request.
@@ -60,6 +62,7 @@ struct RequestPipeline: Sendable {
         _ request: URLRequest,
         validation endpointValidation: ResponseValidation? = nil,
         retryPolicy endpointRetryPolicy: RetryPolicy? = nil,
+        requiresAuthentication: Bool = true,
         discard: (Output) -> Void = { _ in },
         transport: (URLRequest) async throws(HTTPRequestError) -> Attempt<Output>
     ) async throws(HTTPRequestError) -> Output {
@@ -70,7 +73,7 @@ struct RequestPipeline: Sendable {
         var request = request
 
         while true {
-            let sent = try await prepare(request)
+            let sent = try await prepare(request, requiresAuthentication: requiresAuthentication)
             if retryCount == 0 {
                 request.keepIdempotencyKey(of: sent)
             }
@@ -99,7 +102,10 @@ struct RequestPipeline: Sendable {
 
             let context = RetryContext(request: sent, response: response, error: failure, retryCount: retryCount)
             let delay: Duration
-            switch await retrier?.retry(context) ?? .doNotRetry {
+            let decision = await EndpointScope.$requiresAuthentication.withValue(requiresAuthentication) {
+                await retrier?.retry(context) ?? .doNotRetry
+            }
+            switch decision {
                 case .retry:
                     delay = .zero
                 case .retryAfter(let retryDelay):
@@ -137,17 +143,18 @@ struct RequestPipeline: Sendable {
         _ request: URLRequest,
         validation: ResponseValidation? = nil,
         retryPolicy: RetryPolicy? = nil,
+        requiresAuthentication: Bool = true,
         progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Data> {
         guard let reporter = ProgressReporter(progress) else {
-            return try await run(request, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
+            return try await run(request, validation: validation, retryPolicy: retryPolicy, requiresAuthentication: requiresAuthentication) { sent throws(HTTPRequestError) in
                 let response = try await transferData(sent)
                 return Attempt(output: response, response: response)
             }
         }
         let service = service
         let handler = Self.attemptHandler(reporting: reporter)
-        let response = try await run(request, validation: validation, retryPolicy: retryPolicy) { sent throws(HTTPRequestError) in
+        let response = try await run(request, validation: validation, retryPolicy: retryPolicy, requiresAuthentication: requiresAuthentication) { sent throws(HTTPRequestError) in
             let response = try await service.data(for: sent, progress: handler)
             return Attempt(output: response, response: response)
         }
@@ -156,15 +163,31 @@ struct RequestPipeline: Sendable {
     }
 
     /// Opens a WebSocket for `request` after adapting it.
-    func webSocket(_ request: URLRequest) async throws(HTTPRequestError) -> any WebSocketTransport {
+    ///
+    /// - Parameters:
+    ///   - request: The handshake request.
+    ///   - requiresAuthentication: The endpoint's ``HTTPRequest/requiresAuthentication``; `true`
+    ///     for a request with no endpoint.
+    func webSocket(_ request: URLRequest, requiresAuthentication: Bool = true) async throws(HTTPRequestError) -> any WebSocketTransport {
         monitor.requestDidCreate(request)
-        let sent = try await prepare(request)
+        let sent = try await prepare(request, requiresAuthentication: requiresAuthentication)
         do {
             return try await service.webSocket(for: sent)
         } catch {
             throw fail(sent, with: error)
         }
     }
+}
+
+// MARK: - EndpointScope
+
+/// The endpoint settings interceptors see while the pipeline adapts and retries a request.
+///
+/// Set on every pipeline call, so a request with no endpoint resets it to the defaults rather than
+/// inheriting them from an enclosing call.
+enum EndpointScope {
+    /// The ``HTTPRequest/requiresAuthentication`` of the request being adapted or retried.
+    @TaskLocal static var requiresAuthentication = true
 }
 
 // MARK: - Snapshot
@@ -210,6 +233,20 @@ private extension RequestPipeline {
                 return
             }
             reporter.report(completed: progress.completedUnitCount, total: progress.totalUnitCount ?? 0)
+        }
+    }
+
+    /// Prepares `request` with the endpoint's ``HTTPRequest/requiresAuthentication`` visible to
+    /// interceptors through ``EndpointScope``.
+    func prepare(_ request: URLRequest, requiresAuthentication: Bool) async throws(HTTPRequestError) -> URLRequest {
+        do {
+            return try await EndpointScope.$requiresAuthentication.withValue(requiresAuthentication) {
+                try await prepare(request)
+            }
+        } catch let error as HTTPRequestError {
+            throw error
+        } catch {
+            throw .transport(error)
         }
     }
 

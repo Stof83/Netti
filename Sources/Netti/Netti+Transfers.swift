@@ -241,6 +241,7 @@ extension Netti {
                 urlRequest,
                 validation: endpoint.validation,
                 retryPolicy: endpoint.retryPolicy,
+                requiresAuthentication: endpoint.requiresAuthentication,
                 discard: { try? $0.fileURL.map(FileManager.default.removeItem(at:)) }
             ) { sent throws(HTTPRequestError) in
                 let download = await service.download(for: sent, resumeData: resumeState.withLock { $0 }, progress: progress)
@@ -317,7 +318,8 @@ private extension Netti {
         let response = try await snapshot.pipeline.run(
             urlRequest,
             validation: endpoint.validation,
-            retryPolicy: endpoint.retryPolicy
+            retryPolicy: endpoint.retryPolicy,
+            requiresAuthentication: endpoint.requiresAuthentication
         ) { sent throws(HTTPRequestError) in
             let response = try await service.upload(for: sent, from: source, progress: progress)
             return RequestPipeline.Attempt(output: response, response: response)

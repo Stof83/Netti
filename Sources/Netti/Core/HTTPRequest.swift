@@ -76,6 +76,29 @@ public protocol HTTPRequest: Sendable {
     /// `nil` inherits the client's policy. Use ``RetryPolicy/disabled`` to never retry this endpoint.
     var retryPolicy: RetryPolicy? { get }
 
+    /// Whether ``AuthenticationInterceptor`` signs this endpoint and refreshes its credential on a
+    /// `401`. `true` by default.
+    ///
+    /// Return `false` for endpoints that sign in or sign up, and for a refresh endpoint that takes
+    /// its refresh token in the body: a `401` from them means bad credentials, not an expired
+    /// session. Keep `true` for a refresh endpoint that expects the expired credential in
+    /// `Authorization`; a request sent from the interceptor's `refresh` never triggers a refresh. Such a request carries no credential, never waits for
+    /// a refresh, and its `401` never refreshes. The endpoint declares it in its own module, so an
+    /// app that builds the interceptor needs no list of them, even when the enum is internal to a
+    /// feature module.
+    ///
+    /// ```swift
+    /// enum AuthAPI: HTTPRequest {
+    ///     case signIn, signUp, profile
+    ///     // ...
+    ///     var requiresAuthentication: Bool { self == .profile }
+    /// }
+    /// ```
+    ///
+    /// A prebuilt `URLRequest` sent with `send(_:)` or `stream(_:)` has no endpoint, so only the
+    /// interceptor's `excluding` or `hosts` can keep it unsigned.
+    var requiresAuthentication: Bool { get }
+
     /// Converts the instance into a `URLRequest` with the specified HTTP method.
     ///
     /// - Parameter method: The HTTP method to use for the request.
@@ -112,6 +135,9 @@ extension HTTPRequest {
 
     /// By default the endpoint inherits the client's retry policy.
     public var retryPolicy: RetryPolicy? { nil }
+
+    /// By default the endpoint is signed by ``AuthenticationInterceptor``.
+    public var requiresAuthentication: Bool { true }
 
     /// Converts the instance into a `URLRequest` with the specified HTTP method.
     ///
