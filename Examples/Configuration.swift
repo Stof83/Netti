@@ -8,7 +8,7 @@ import Netti
 import NettiTesting
 
 /// Every client setting: the JSON coder, interceptors, retry, validation, monitors, logging,
-/// connectivity, deduplication, cache size and the engine's own options.
+/// connectivity, sample data, deduplication, cache size and the engine's own options.
 ///
 /// Runs offline. Settings are plain properties; a change applies to the next request, never to
 /// one in flight.
@@ -44,6 +44,9 @@ func configurationExample() async throws {
     netti.monitors = [SendMonitor()]
     netti.isLoggingEnabled = false
     netti.connectivity = StubConnectivity(.connected)
+    // Sample data is off unless asked for, and DEBUG-only; the Testing example shows it serving a fixture.
+    netti.usesSampleData = false
+    netti.sampleDelay = nil
 
     let user: User? = try await netti.get(UserAPI.user(1)).data
     report("config -> \(user?.name ?? "nil") decoded with useDefaultKeys")

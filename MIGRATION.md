@@ -1,8 +1,8 @@
 # Migrating Netti
 
-Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 changes the default query-date format. This guide covers six paths:
+Netti 2.0 and 3.0 break source compatibility on purpose, and 3.3 and 3.4 change a default. This guide covers six paths:
 
-- [Netti 3.3 to 3.4](#netti-33-to-34): additive, nothing to change
+- [Netti 3.3 to 3.4](#netti-33-to-34): sample data is served only when you turn it on, and only in DEBUG builds; the rest is additive
 - [Netti 3.2 to 3.3](#netti-32-to-33): query dates use a different format, check your servers
 - [Netti 3.0 to 3.1](#netti-30-to-31): additive, nothing to change
 - [Netti 2.x to 3.0](#netti-2x-to-30): the Alamofire engine and the Alamofire dependency are removed
@@ -13,7 +13,23 @@ To stay on 1.x until you're ready, keep the requirement at `.upToNextMajor(from:
 
 ## Netti 3.3 to 3.4
 
-3.4 only adds API, so raise the requirement to `from: "3.4.0"` and rebuild. Every 3.3 call keeps its behavior, unless an endpoint already declares a property with the same name (see the end of this section).
+3.4 adds API and changes one behavior. Raise the requirement to `from: "3.4.0"`, rebuild, and check every endpoint that defines `sampleData`. Everything else in 3.3 keeps its behavior, unless an endpoint already declares a property named `requiresAuthentication` or `sampleStatusCode` (see the end of this section).
+
+- **Sample data is opt-in and DEBUG-only.** In 3.3, an endpoint whose `sampleData` was not `nil` never reached the network, in every build. In 3.4 it does, unless the client has `usesSampleData = true`, and a release build never serves a sample. Nothing fails to compile: an app that relied on samples silently starts sending real requests.
+- **A sample runs through the pipeline.** Interceptors, validation, retry, monitors and the logger now see it, with the endpoint's new `sampleStatusCode` (`200` by default). The offline cache is neither read nor written for a sample. A sample needs a buildable URL: an endpoint whose `baseURL` is `nil` now throws `invalidURL` instead of returning its sample. A sampled response carries a `Content-Type: application/json` header, and the new `sampleDelay` can make it take time.
+
+```swift
+// Before (3.3): every endpoint with sampleData was mocked, in every build
+let netti = Netti()
+
+// After (3.4): opt in where you want mocks, for example in previews and UI tests
+let netti = Netti()
+netti.usesSampleData = ProcessInfo.processInfo.arguments.contains("-mockAPI")
+```
+
+Code that guarded samples with `#if DEBUG` or a "running for previews" flag can drop the guard and set `usesSampleData` instead. Previews set it to `true` on the client they build. `send(_:)` with a prebuilt `URLRequest` still skips samples.
+
+Also new in 3.4, and additive:
 
 - **`HTTPRequest.requiresAuthentication`**, `true` by default. An endpoint that returns `false` is kept out of `AuthenticationInterceptor`: it carries no credential, never waits for a refresh, and its `401` never refreshes. It is declared on the endpoint, so a feature module can opt out its sign-in, sign-up and refresh endpoints without the app naming them.
 
@@ -33,7 +49,7 @@ enum AuthAPI: HTTPRequest {
 AuthenticationInterceptor(token: token) { expired in try await authAPI.refresh(using: expired.refreshToken) }
 ```
 
-Check your endpoints for a property already named `requiresAuthentication`. A `Bool` one now decides whether `AuthenticationInterceptor` signs the endpoint: where it returns `false`, the endpoint is sent unsigned. One of another type leaves the default in place, but may make uses of the name ambiguous; rename it.
+Check your endpoints for a property already named `requiresAuthentication`. A `Bool` one now decides whether `AuthenticationInterceptor` signs the endpoint: where it returns `false`, the endpoint is sent unsigned. One of another type leaves the default in place, but may make uses of the name ambiguous; rename it. Likewise, an endpoint that already has an `Int` property named `sampleStatusCode` now uses it as the status of its sample.
 
 ## Netti 3.2 to 3.3
 

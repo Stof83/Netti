@@ -77,7 +77,7 @@ var headers: HTTPHeaders {
 For headers every request needs, such as a token, use an interceptor instead; see <doc:InterceptorsAndRetry>. The other per-endpoint knobs are optional requirements of ``HTTPRequest``:
 
 - ``HTTPRequest/timeoutInterval``: 60 seconds by default.
-- ``HTTPRequest/sampleData``: when set, the verbs decode it in place of sending the request, which helps with previews and prototypes.
+- ``HTTPRequest/sampleData`` and ``HTTPRequest/sampleStatusCode``: a fixture and its status. The verbs answer with it in place of sending the request when the client sets ``Netti/usesSampleData`` to `true`, in DEBUG builds only. See <doc:Testing>.
 - ``HTTPRequest/cachePolicy``, ``HTTPRequest/validation`` and ``HTTPRequest/retryPolicy``: see <doc:CachingAndOffline>, <doc:ValidationAndErrors> and <doc:InterceptorsAndRetry>.
 - ``HTTPRequest/requiresAuthentication``: `false` keeps ``AuthenticationInterceptor`` off a sign-in, sign-up or refresh endpoint; see <doc:InterceptorsAndRetry>.
 

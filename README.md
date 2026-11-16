@@ -198,7 +198,7 @@ struct User: Codable, Sendable {
 }
 ```
 
-Request and response types must be `Sendable`. An endpoint can also override `cachePolicy`, `validation`, `retryPolicy`, `timeoutInterval` (60 s by default) and `sampleData`. When `sampleData` is set, it is decoded in place of a network call.
+Request and response types must be `Sendable`. An endpoint can also override `cachePolicy`, `validation`, `retryPolicy`, `timeoutInterval` (60 s by default), `sampleData` and `sampleStatusCode` (`200` by default). A sample is served only when the client opts in with `netti.usesSampleData = true`, and only in DEBUG builds; see [Testing](#testing).
 
 → Full guide: [Making Requests](./Sources/Netti/Netti.docc/MakingRequests.md)
 
@@ -582,6 +582,21 @@ let sent: NewUser = try server.requests[0].decodedBody()
 ```
 
 `server.redirect(from:to:)` answers with a real `302`, so the engine's `RedirectHandler` decides whether to follow it. To build your own client, use `server.service()` or `server.configuration`. To test without `URLSession` at all, `StubNetworkService` provides closure-based handlers.
+
+**Mock the API at runtime.** For previews, offline demos and UI tests, give an endpoint a fixture and turn mocks on for the client:
+
+```swift
+enum UserAPI: HTTPRequest {
+    // ...
+    var sampleData: Data? { Data(#"{"id": 42, "name": "Ada"}"#.utf8) }
+    var sampleStatusCode: Int { 200 }   // 404 previews an error state
+}
+
+netti.usesSampleData = ProcessInfo.processInfo.arguments.contains("-mockAPI")
+netti.sampleDelay = .seconds(1)   // optional: preview a loading state
+```
+
+Samples work in DEBUG builds only: in a release build the same code compiles, and every request goes to the network. A sample runs through the whole pipeline, so interceptors, validation, retry, monitors and the logger see it as a real response. The offline cache is neither read nor written. Because interceptors run, build a preview client without `AuthenticationInterceptor`, or a sampled `401` starts a real refresh.
 
 → Full guide: [Testing](./Sources/Netti/Netti.docc/Testing.md)
 

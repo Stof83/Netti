@@ -7,7 +7,7 @@ import Foundation
 import NettiTesting
 
 /// Testing code that uses Netti without a network: stubs, recorded requests, failures, `times:`,
-/// a stub engine that records what reaches it, and a scripted WebSocket.
+/// a stub engine that records what reaches it, a scripted WebSocket, and runtime sample data.
 ///
 /// Runs offline, as every other example does; this one shows what each piece of `NettiTesting`
 /// is for. `StubConnectivity` is shown in the CachingAndOffline example. In a real test, replace
@@ -70,4 +70,47 @@ func testingExample() async throws {
     report("socket   -> sent \(socket.sent.count) frame, echoed back: \(echoed == .text("ping"))")
     try expect(echoed == .text("ping"), "the stub socket did not echo")
     await connection.close()
+
+    // MARK: - Sample data: mock an API at runtime, in DEBUG builds only
+
+    #if DEBUG
+    let preview = Netti(service: StubNetworkService())
+    preview.isLoggingEnabled = false
+    preview.usesSampleData = true
+    preview.sampleDelay = .milliseconds(50)
+
+    let profile: HTTPResponse<User> = try await preview.get(ProfileAPI.profile)
+    report("sample   -> \(profile.statusCode ?? 0) \(profile.data?.name ?? "nil"), served without any request")
+    try expect(profile.data == User(id: 1, name: "Ada"), "expected the sample")
+
+    preview.validation = ResponseValidation()
+    var rejectedStatus: Int?
+    do {
+        let _: HTTPResponse<User> = try await preview.get(ProfileAPI.missing)
+    } catch .unacceptableStatusCode(let status, _) {
+        rejectedStatus = status
+    }
+    report("sample   -> a sampled \(rejectedStatus ?? 0) goes through validation like a real one")
+    try expect(rejectedStatus == 404, "expected the sampled 404 to throw")
+    #endif
 }
+
+#if DEBUG
+/// An endpoint with a fixture for each state a screen has to show.
+private enum ProfileAPI: HTTPRequest {
+    case profile
+    case missing
+
+    var baseURL: URL? { URL(string: "https://api.example.com") }
+    var basePath: String { "v1" }
+    var path: String { "users/1" }
+    var headers: HTTPHeaders { [.accept("application/json")] }
+    var sampleData: Data? {
+        switch self {
+            case .profile: Data(#"{"id": 1, "name": "Ada"}"#.utf8)
+            case .missing: Data(#"{"message": "not found"}"#.utf8)
+        }
+    }
+    var sampleStatusCode: Int { self == .missing ? 404 : 200 }
+}
+#endif

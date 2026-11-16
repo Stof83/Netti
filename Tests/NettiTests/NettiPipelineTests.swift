@@ -36,10 +36,11 @@ struct NettiPipelineTests {
         #expect(response.data == ErrorEnvelope(message: "expired"))
     }
 
-    @Test("given sample data, when sent, then it is decoded without any transport call")
+    @Test("given sample data and usesSampleData, when sent, then it is decoded without any transport call")
     func sampleData_skipsTransport() async throws {
         let service = StubNetworkService()
         let netti = makeNetti(service: service)
+        netti.usesSampleData = true
         var endpoint = TestEndpoint()
         endpoint.sampleData = try JSONEncoder().encode(Widget(id: 1, name: "sample"))
 

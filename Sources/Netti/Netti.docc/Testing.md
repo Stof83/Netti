@@ -134,6 +134,43 @@ Pass a `StubConnectivity` and change it during the test. This example uses an en
 }
 ```
 
+### Mock APIs at runtime
+
+`StubServer` is for unit tests. To run an app or a SwiftUI preview against fixtures, put the fixture on the endpoint and turn mocks on for the client:
+
+```swift
+enum UserAPI: HTTPRequest {
+    case user(Int)
+    case missing
+    // ...
+    var sampleData: Data? {
+        switch self {
+            case .user: Data(#"{"id": 42, "name": "Ada"}"#.utf8)
+            case .missing: Data(#"{"message": "not found"}"#.utf8)
+        }
+    }
+    var sampleStatusCode: Int {
+        if case .missing = self { 404 } else { 200 }
+    }
+}
+
+#Preview {
+    let netti = Netti()
+    netti.usesSampleData = true
+    return UserView(netti: netti)
+}
+```
+
+- Samples are opt-in: ``Netti/usesSampleData`` is `false` by default, so an endpoint with `sampleData` still sends real requests until you turn it on.
+- They work in DEBUG builds only. In a release build the properties exist and compile, so one line of code works in both, but a sample is never served. There is nothing to guard with `#if DEBUG` and no way to ship a fixture by accident.
+- A sample runs through the whole pipeline: interceptors adapt the request, validation judges the status, retry and monitors see it, and the logger prints it. A mocked run therefore behaves like a real one.
+- Interceptors run for real, so build a preview client without ``AuthenticationInterceptor``, or with a credential that does not expire: a missing or expired credential, or a sampled `401`, starts a real refresh over the network.
+- ``HTTPRequest/sampleStatusCode`` is the status, `200` by default. With validation turned on, a sampled `404` throws like a real one; without it, the `404` response is returned as received.
+- ``Netti/sampleDelay`` makes every sample take that long, to preview a loading state. It stops when the task is cancelled.
+- The offline cache is neither read nor written, so a fixture never replaces real data.
+- To turn mocks on for UI tests, pass a launch argument and read it in your app: `netti.usesSampleData = ProcessInfo.processInfo.arguments.contains("-mockAPI")`.
+- Transport failures, such as being offline or a timeout, cannot be mocked this way. Use `StubServer` in unit tests for those.
+
 ### Test streams and WebSockets
 
 `StubServer` cannot fake streams or WebSockets. Use `StubNetworkService`, whose handlers answer each kind of call. Every handler has a default, so replace only the one the test needs:

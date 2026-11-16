@@ -52,8 +52,22 @@ public protocol HTTPRequest: Sendable {
 
     /// The sample data for the mock response (if applicable).
     ///
-    /// When set, the verbs decode it in place of sending the request.
+    /// In a DEBUG build, when the client's ``Netti/usesSampleData`` is `true` and this is set, the
+    /// verbs answer with it in place of sending the request. The sample runs through the same
+    /// pipeline as a real response, with ``sampleStatusCode`` as its status. Release builds never
+    /// serve it, and `nil` always sends the request.
     var sampleData: Data? { get }
+
+    /// The status code of the sample response, `200` by default.
+    ///
+    /// Switch on the endpoint's case to preview an error state:
+    ///
+    /// ```swift
+    /// var sampleStatusCode: Int { self == .profile ? 404 : 200 }
+    /// ```
+    ///
+    /// Validation, retry and interceptors see it like a real status.
+    var sampleStatusCode: Int { get }
 
     /// The timeout interval for the network request, in seconds.
     var timeoutInterval: TimeInterval { get }
@@ -123,6 +137,9 @@ extension HTTPRequest {
 
     /// A default implementation returning `nil` for mock sample data.
     public var sampleData: Data? { nil }
+
+    /// A default implementation answering samples with `200`.
+    public var sampleStatusCode: Int { 200 }
 
     /// A default implementation providing a timeout interval of 60 seconds.
     public var timeoutInterval: TimeInterval { 60 }

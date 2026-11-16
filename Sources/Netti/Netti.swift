@@ -41,6 +41,8 @@ public final class Netti: Sendable {
         let connectivity: any ConnectivitySource
         let logger: NetworkLogger?
         let pipeline: RequestPipeline
+        let usesSampleData: Bool
+        let sampleDelay: Duration?
     }
 
     private struct Configuration: Sendable {
@@ -51,6 +53,8 @@ public final class Netti: Sendable {
         var monitors: [any EventMonitor]
         var isLoggingEnabled: Bool
         var connectivity: any ConnectivitySource
+        var usesSampleData = false
+        var sampleDelay: Duration?
     }
 
     // MARK: - Constants
@@ -120,6 +124,30 @@ public final class Netti: Sendable {
         set { configuration.withLock { $0.connectivity = newValue } }
     }
 
+    /// Whether endpoints that define ``HTTPRequest/sampleData`` answer with it instead of the
+    /// network. `false` by default.
+    ///
+    /// Works in DEBUG builds only: in a release build the property exists, so one line of code
+    /// compiles in both, but it never serves a sample and every request goes to the network. A
+    /// sample runs through the whole pipeline, so interceptors, validation, retry and monitors
+    /// see it as a real response, with the endpoint's ``HTTPRequest/sampleStatusCode``. The offline
+    /// cache is neither read nor written.
+    ///
+    /// ```swift
+    /// netti.usesSampleData = ProcessInfo.processInfo.arguments.contains("-mockAPI")
+    /// ```
+    public var usesSampleData: Bool {
+        get { configuration.withLock { $0.usesSampleData } }
+        set { configuration.withLock { $0.usesSampleData = newValue } }
+    }
+
+    /// How long a sample response takes to arrive, to preview loading states. `nil`, the default,
+    /// answers at once. Has no effect unless ``usesSampleData`` is `true`, and none in release builds.
+    public var sampleDelay: Duration? {
+        get { configuration.withLock { $0.sampleDelay } }
+        set { configuration.withLock { $0.sampleDelay = newValue } }
+    }
+
     /// The configuration as it is now, with the pipeline built from it; read it once per request.
     var snapshot: Snapshot {
         let configuration = configuration.withLock { $0 }
@@ -137,7 +165,9 @@ public final class Netti: Sendable {
             jsonManager: configuration.jsonManager,
             connectivity: configuration.connectivity,
             logger: logger,
-            pipeline: pipeline
+            pipeline: pipeline,
+            usesSampleData: configuration.usesSampleData,
+            sampleDelay: configuration.sampleDelay
         )
     }
 
@@ -311,8 +341,9 @@ public final class Netti: Sendable {
 // MARK: - Pipeline
 
 extension Netti {
-    /// Sends an endpoint: sample data, then the offline cache, then the network through the
-    /// pipeline, caching a successful response before returning it.
+    /// Sends an endpoint: a sample when ``usesSampleData`` asks for it in a DEBUG build, else the
+    /// offline cache, else the network, all through the pipeline, caching a successful network
+    /// response before returning it.
     func send<Response: Decodable & Sendable>(
         _ endpoint: some HTTPRequest,
         method: HTTPMethod,
@@ -320,13 +351,36 @@ extension Netti {
         progress: ProgressHandler? = nil
     ) async throws(HTTPRequestError) -> HTTPResponse<Response> {
         let snapshot = self.snapshot
-        if let sampleData = endpoint.sampleData {
-            let response: HTTPResponse<Response> = try decode(sampleData, request: try? endpoint.asURLRequest(for: method), using: snapshot)
-            ProgressReporter(progress)?.finish(completed: Int64(sampleData.count))
-            return response
-        }
-
         let urlRequest = try buildRequest(endpoint, parameters: parameters, method: method, jsonManager: snapshot.jsonManager)
+        #if DEBUG
+        if snapshot.usesSampleData, let sampleData = endpoint.sampleData {
+            // The pipeline copy has no deduplicator, so concurrent samples never share a transfer.
+            let pipeline = snapshot.pipeline
+            let sampled = RequestPipeline(
+                service: SampleNetworkService(
+                    data: sampleData,
+                    statusCode: endpoint.sampleStatusCode,
+                    delay: snapshot.sampleDelay,
+                    wrapped: pipeline.service
+                ),
+                interceptor: pipeline.interceptor,
+                retryPolicy: pipeline.retryPolicy,
+                validation: pipeline.validation,
+                monitor: pipeline.monitor,
+                deduplicator: nil,
+                sleep: pipeline.sleep
+            )
+            let response = try await sampled.data(
+                urlRequest,
+                validation: endpoint.validation,
+                retryPolicy: endpoint.retryPolicy,
+                requiresAuthentication: endpoint.requiresAuthentication,
+                progress: progress
+            )
+            return try decoded(response, using: snapshot)
+        }
+        #endif
+
         let cachePolicy = endpoint.cachePolicy
         if cachePolicy.isCaching,
            snapshot.connectivity.currentStatus == .disconnected,

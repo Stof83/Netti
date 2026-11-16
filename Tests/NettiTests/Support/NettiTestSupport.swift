@@ -14,6 +14,7 @@ struct TestEndpoint: HTTPRequest {
     var path = "items"
     var headers: HTTPHeaders = [:]
     var sampleData: Data?
+    var sampleStatusCode = 200
     var cachePolicy = HTTPCachePolicy.none
     var validation: ResponseValidation?
     var retryPolicy: RetryPolicy?

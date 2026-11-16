@@ -368,8 +368,10 @@ struct DataProgressTests {
         let sample = try JSONEncoder().encode(Widget(id: 1, name: "sample"))
         endpoint.sampleData = sample
         let recorder = ProgressRecorder()
+        let netti = makeNetti(service: service)
+        netti.usesSampleData = true
 
-        let response: HTTPResponse<Widget> = try await makeNetti(service: service).get(endpoint, progress: recorder.handler)
+        let response: HTTPResponse<Widget> = try await netti.get(endpoint, progress: recorder.handler)
 
         #expect(response.data == Widget(id: 1, name: "sample"))
         #expect(recorder.updates == [TransferProgress(completedUnitCount: Int64(sample.count), totalUnitCount: Int64(sample.count))])

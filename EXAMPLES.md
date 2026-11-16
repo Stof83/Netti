@@ -11,7 +11,7 @@ The command prints what each example does and exits non-zero if any of them fail
 | Feature | File | What it shows |
 |---|---|---|
 | Requests | [RequestsAndVerbs.swift](Examples/RequestsAndVerbs.swift) | Every HTTP verb, a query, a JSON body, reading the status before the body, and sending a prebuilt `URLRequest` |
-| Configuration | [Configuration.swift](Examples/Configuration.swift) | Every client setting: the JSON coder, interceptors, retry, validation, monitors, logging, connectivity, deduplication, cache size and the engine's own options |
+| Configuration | [Configuration.swift](Examples/Configuration.swift) | Every client setting: the JSON coder, interceptors, retry, validation, monitors, logging, connectivity, sample data, deduplication, cache size and the engine's own options |
 | Upload | [UploadAndMultipart.swift](Examples/UploadAndMultipart.swift) | Uploading in-memory data, a file and a multipart form, with progress |
 | Download | [DownloadAndResume.swift](Examples/DownloadAndResume.swift) | Downloading to a file, then resuming a download that failed halfway |
 | Token refresh | [Authentication.swift](Examples/Authentication.swift) | Refreshing an expired token before sending, refreshing on a backend `TOKEN_EXPIRED` code, 20 parallel requests that share one refresh, login, account switch and logout, and a sign-in endpoint from another module that opts out |
@@ -24,7 +24,7 @@ The command prints what each example does and exits non-zero if any of them fail
 | Observability | [Observability.swift](Examples/Observability.swift) | Watching the request lifecycle with an `EventMonitor`, and what the logger redacts |
 | Redirects | [Redirects.swift](Examples/Redirects.swift) | `StubServer.redirect` answers with a real `302`, so the real handler decides, offline: `.secure` keeping `Authorization` on the same origin and dropping it on another, `.doNotFollow` returning the `302` with its `Location`, a custom same-host handler, and `.follow` |
 | Certificate pinning | [CertificatePinning.swift](Examples/CertificatePinning.swift) | A pin computed in code and checked against the `openssl` value, key and certificate pins, wildcards, a CDN passthrough, composite with revocation, a private CA, the DEBUG-only `.disabled`, handling a rejection, and the startup expiry check |
-| Testing | [Testing.swift](Examples/Testing.swift) | Stubs, recorded requests, failures, `times:`, a stub engine that records what reaches it, and a scripted WebSocket |
+| Testing | [Testing.swift](Examples/Testing.swift) | Stubs, recorded requests, failures, `times:`, a stub engine that records what reaches it, a scripted WebSocket, and runtime sample data with a status code and a delay (DEBUG builds) |
 
 [main.swift](Examples/main.swift) runs the examples in order. [Support.swift](Examples/Support.swift) holds the shared `User` model, the `UserAPI` endpoints and the `report` and `expect` helpers. One function, `pinnedRequestExample(netti:)`, only compiles: it needs a real TLS handshake, so `main.swift` doesn't call it.
 
